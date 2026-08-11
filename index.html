@@ -3,17 +3,19 @@
 
 <head>
   <meta charset="UTF-8">
+
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1.0"
   >
+
   <title>Async Art Project</title>
 
   <style>
 
     /* =========================================================
-       PAGE RESET
-       Removes default browser spacing
+       PAGE SETUP
+       Full-screen installation environment
     ========================================================= */
 
     * {
@@ -22,12 +24,6 @@
       box-sizing: border-box;
     }
 
-
-    /* =========================================================
-       PAGE BACKGROUND
-       Full-screen black background
-    ========================================================= */
-
     html,
     body {
       width: 100%;
@@ -35,69 +31,80 @@
       overflow: hidden;
       background: black;
       cursor: crosshair;
-      font-family: Arial, Helvetica, sans-serif;
     }
 
 
     /* =========================================================
-       FINAL WEBGL CANVAS
-       All footage, webcam ghosting and psychedelic effects
-       are rendered here
+       HYDRA OUTPUT CANVAS
+       All final visuals appear here
     ========================================================= */
 
-    #glCanvas {
+    #hydraCanvas {
       position: fixed;
       inset: 0;
+
       width: 100%;
       height: 100%;
+
       display: block;
     }
 
 
     /* =========================================================
-       HIDDEN VIDEO SOURCES
-       Videos are processed internally
+       SOURCE VIDEOS
+       They stay almost invisible but remain active
+       for Hydra and Safari/iOS compatibility
     ========================================================= */
 
     #footage,
     #webcam {
       position: fixed;
-      width: 1px;
-      height: 1px;
-      opacity: 0;
+
+      top: 0;
+      left: 0;
+
+      width: 2px;
+      height: 2px;
+
+      opacity: 0.001;
+
       pointer-events: none;
     }
 
 
     /* =========================================================
-       CAMERA + MICROPHONE BUTTON
+       CAMERA + SOUND BUTTON
     ========================================================= */
 
     #startButton {
       position: fixed;
+
       top: 16px;
       left: 16px;
-      z-index: 20;
+
+      z-index: 100;
 
       padding: 9px 14px;
 
-      border: 1px solid rgba(255,255,255,0.8);
+      border: 1px solid rgba(255,255,255,0.75);
 
-      background: rgba(0,0,0,0.45);
+      background: rgba(0,0,0,0.42);
 
       color: white;
 
+      font-family: Arial, Helvetica, sans-serif;
+
       font-size: 10px;
+
       letter-spacing: 1.5px;
 
       cursor: pointer;
-      backdrop-filter: blur(5px);
     }
 
 
     /* =========================================================
        ACTIVE BUTTON
-       Fades the interface after activation
+       Fades UI after activation
     ========================================================= */
 
     #startButton.active {
@@ -113,7 +120,7 @@
 
   <!-- =========================================================
        MAIN FOOTAGE
-       Replace this URL later with your own video
+       Replace this with your own video later
   ========================================================== -->
 
   <video
@@ -132,8 +139,7 @@
 
 
   <!-- =========================================================
-       LIVE WEBCAM SOURCE
-       Webcam is never displayed directly
+       LIVE WEBCAM
   ========================================================== -->
 
   <video
@@ -145,7 +151,7 @@
 
 
   <!-- =========================================================
-       CAMERA + SOUND CONTROL
+       CAMERA + MICROPHONE CONTROL
   ========================================================== -->
 
   <button id="startButton">
@@ -154,10 +160,18 @@
 
 
   <!-- =========================================================
-       FINAL OUTPUT
+       HYDRA CANVAS
   ========================================================== -->
 
-  <canvas id="glCanvas"></canvas>
+  <canvas id="hydraCanvas"></canvas>
+
+
+  <!-- =========================================================
+       HYDRA-SYNTH LIBRARY
+       Hydra runs directly inside this webpage
+  ========================================================== -->
+
+  <script src="https://unpkg.com/hydra-synth"></script>
 
 
   <script>
@@ -167,7 +181,7 @@
     ========================================================= */
 
     const canvas =
-      document.getElementById("glCanvas");
+      document.getElementById("hydraCanvas");
 
     const footage =
       document.getElementById("footage");
@@ -180,1744 +194,172 @@
 
 
     /* =========================================================
-       WEBGL CONTEXT
-       WebGL allows pixel-level liquid distortion
+       INTERACTION VALUES
     ========================================================= */
 
-    const gl =
-      canvas.getContext(
-        "webgl2",
-        {
-          alpha: false,
-          antialias: false
-        }
-      );
+    let audioLevel = 0;
 
-
-    if (!gl) {
-      alert("WebGL2 is required.");
-      throw new Error("WebGL2 unavailable");
-    }
-
-
-    /* =========================================================
-       VIDEO PROCESSING BUFFERS
-    ========================================================= */
-
-    const footageBuffer =
-      document.createElement("canvas");
-
-    const footageCtx =
-      footageBuffer.getContext("2d");
-
-
-    const webcamBuffer =
-      document.createElement("canvas");
-
-    const webcamCtx =
-      webcamBuffer.getContext("2d");
-
-
-    const previousWebcamBuffer =
-      document.createElement("canvas");
-
-    const previousWebcamCtx =
-      previousWebcamBuffer.getContext("2d");
-
-
-    /* =========================================================
-       INTERACTION STATE
-    ========================================================= */
-
-    let webcamActive = false;
+    let audioPeak = 0;
 
     let mouseX = 0.5;
+
     let mouseY = 0.5;
 
-    let previousMouseX = 0.5;
-    let previousMouseY = 0.5;
+    let mouseEnergy = 0;
 
-    let mouseSpeed = 0;
+    let lastMouseX = 0.5;
+
+    let lastMouseY = 0.5;
 
 
     /* =========================================================
-       AUDIO STATE
+       AUDIO ANALYSIS VALUES
     ========================================================= */
 
     let analyser = null;
-    let audioData = null;
 
-    let audioLevel = 0;
-    let audioPeak = 0;
+    let audioData = null;
 
 
     /* =========================================================
        MAIN VISUAL SETTINGS
-       Edit these values later if needed
+       These are the parameters we will tune later
     ========================================================= */
 
-    const AUDIO_SENSITIVITY = 16.0;
+    const AUDIO_SENSITIVITY = 18;
 
-    const MOUSE_RADIUS = 0.045;
+    const CAMERA_PRESENCE = 0.52;
 
-    const WEBCAM_GHOST_STRENGTH = 0.22;
+    const CAMERA_WARP = 0.16;
 
-    const WEBCAM_MOTION_STRENGTH = 3.2;
+    const FEEDBACK_AMOUNT = 0.72;
 
-    const LIQUID_STRENGTH = 0.045;
+    const COLOR_AMOUNT = 0.018;
 
-    const COLOR_STRENGTH = 2.8;
-
-    const FEEDBACK_STRENGTH = 0.94;
+    const MOUSE_EFFECT = 0.045;
 
 
     /* =========================================================
-       VERTEX SHADER
-       Draws one full-screen surface
+       HYDRA ENGINE
+       Uses the same visual synthesis system as Hydra
     ========================================================= */
 
-    const vertexShaderSource = `#version 300 es
+    const hydra = new Hydra({
 
-      precision highp float;
+      canvas: canvas,
 
-      in vec2 a_position;
+      detectAudio: false,
 
-      out vec2 v_uv;
+      enableStreamCapture: false,
 
-      void main() {
+      makeGlobal: true
 
-        v_uv =
-          a_position * 0.5 + 0.5;
-
-        gl_Position =
-          vec4(
-            a_position,
-            0.0,
-            1.0
-          );
-
-      }
-
-    `;
+    });
 
 
     /* =========================================================
-       PSYCHEDELIC FRAGMENT SHADER
-       Creates liquid distortion, trails, color shifting,
-       webcam ghosting and sound-reactive motion
+       RESIZE HYDRA
     ========================================================= */
 
-    const fragmentShaderSource = `#version 300 es
-
-      precision highp float;
-
-
-      uniform sampler2D u_footage;
-
-      uniform sampler2D u_webcam;
-
-      uniform sampler2D u_previousWebcam;
-
-      uniform sampler2D u_feedback;
-
-
-      uniform vec2 u_mouse;
-
-      uniform float u_mouseSpeed;
-
-      uniform float u_time;
-
-      uniform float u_audio;
-
-      uniform float u_audioPeak;
-
-      uniform float u_webcamActive;
-
-
-      uniform float u_mouseRadius;
-
-      uniform float u_webcamGhostStrength;
-
-      uniform float u_webcamMotionStrength;
-
-      uniform float u_liquidStrength;
-
-      uniform float u_colorStrength;
-
-      uniform float u_feedbackStrength;
-
-
-      in vec2 v_uv;
-
-      out vec4 outColor;
-
-
-      /* =======================================================
-         RANDOM HASH
-    ======================================================= */
-
-      float hash21(vec2 p) {
-
-        p =
-          fract(
-            p *
-            vec2(
-              123.34,
-              456.21
-            )
-          );
-
-        p +=
-          dot(
-            p,
-            p + 45.32
-          );
-
-        return
-          fract(
-            p.x *
-            p.y
-          );
-
-      }
-
-
-      /* =======================================================
-         SMOOTH NOISE
-    ======================================================= */
-
-      float noise(vec2 p) {
-
-        vec2 i =
-          floor(p);
-
-        vec2 f =
-          fract(p);
-
-
-        float a =
-          hash21(i);
-
-        float b =
-          hash21(
-            i + vec2(1.0,0.0)
-          );
-
-        float c =
-          hash21(
-            i + vec2(0.0,1.0)
-          );
-
-        float d =
-          hash21(
-            i + vec2(1.0,1.0)
-          );
-
-
-        vec2 u =
-          f *
-          f *
-          (
-            3.0 -
-            2.0 *
-            f
-          );
-
-
-        return mix(
-
-          mix(
-            a,
-            b,
-            u.x
-          ),
-
-          mix(
-            c,
-            d,
-            u.x
-          ),
-
-          u.y
-
-        );
-
-      }
-
-
-      /* =======================================================
-         FRACTAL NOISE
-         Produces organic continuous motion
-    ======================================================= */
-
-      float fbm(vec2 p) {
-
-        float value = 0.0;
-
-        float amplitude = 0.5;
-
-
-        for (
-          int i = 0;
-          i < 6;
-          i++
-        ) {
-
-          value +=
-            noise(p) *
-            amplitude;
-
-
-          p =
-            p *
-            2.03 +
-            vec2(
-              9.7,
-              13.1
-            );
-
-
-          amplitude *=
-            0.48;
-
-        }
-
-
-        return value;
-
-      }
-
-
-      /* =======================================================
-         COLOR SATURATION
-    ======================================================= */
-
-      vec3 saturateColor(
-        vec3 color,
-        float amount
-      ) {
-
-        float gray =
-          dot(
-            color,
-            vec3(
-              0.299,
-              0.587,
-              0.114
-            )
-          );
-
-
-        return mix(
-          vec3(gray),
-          color,
-          amount
-        );
-
-      }
-
-
-      /* =======================================================
-         HUE ROTATION
-         Creates psychedelic color drift
-    ======================================================= */
-
-      vec3 hueShift(
-        vec3 color,
-        float angle
-      ) {
-
-        const mat3 rgb2yiq =
-          mat3(
-
-            0.299,
-            0.587,
-            0.114,
-
-            0.596,
-           -0.275,
-           -0.321,
-
-            0.212,
-           -0.523,
-            0.311
-
-          );
-
-
-        const mat3 yiq2rgb =
-          mat3(
-
-            1.0,
-            0.956,
-            0.621,
-
-            1.0,
-           -0.272,
-           -0.647,
-
-            1.0,
-           -1.106,
-            1.703
-
-          );
-
-
-        vec3 yiq =
-          rgb2yiq *
-          color;
-
-
-        float hue =
-          atan(
-            yiq.z,
-            yiq.y
-          );
-
-
-        float chroma =
-          length(
-            yiq.yz
-          );
-
-
-        hue += angle;
-
-
-        yiq.y =
-          chroma *
-          cos(hue);
-
-
-        yiq.z =
-          chroma *
-          sin(hue);
-
-
-        return
-          clamp(
-            yiq2rgb *
-            yiq,
-            0.0,
-            1.0
-          );
-
-      }
-
-
-      /* =======================================================
-         MAIN VISUAL SYSTEM
-    ======================================================= */
-
-      void main() {
-
-        vec2 uv =
-          v_uv;
-
-
-        /* =====================================================
-           WEBCAM MOTION DIFFERENCE
-           Only movement survives, not the full portrait
-        ===================================================== */
-
-        vec3 webcamNow =
-          texture(
-            u_webcam,
-            uv
-          ).rgb;
-
-
-        vec3 webcamPrevious =
-          texture(
-            u_previousWebcam,
-            uv
-          ).rgb;
-
-
-        float webcamDifference =
-          length(
-            webcamNow -
-            webcamPrevious
-          );
-
-
-        float webcamMotion =
-          smoothstep(
-
-            0.018,
-
-            0.16,
-
-            webcamDifference *
-            u_webcamMotionStrength
-
-          ) *
-          u_webcamActive;
-
-
-        /* =====================================================
-           WEBCAM GHOST FIELD
-           Creates soft silhouette residue
-        ===================================================== */
-
-        float webcamBrightness =
-          dot(
-            webcamNow,
-            vec3(
-              0.333
-            )
-          );
-
-
-        float webcamGhost =
-
-          smoothstep(
-            0.25,
-            0.8,
-            webcamBrightness
-          ) *
-
-          u_webcamGhostStrength *
-
-          u_webcamActive;
-
-
-        webcamGhost *=
-          (
-            0.25 +
-            webcamMotion *
-            1.5
-          );
-
-
-        /* =====================================================
-           SMALL LOCAL MOUSE FIELD
-    ===================================================== */
-
-        float mouseDistance =
-          distance(
-            uv,
-            u_mouse
-          );
-
-
-        float mouseNoise =
-          fbm(
-            uv * 18.0 +
-            u_time * 0.35
-          );
-
-
-        float localRadius =
-          u_mouseRadius *
-          (
-            0.55 +
-            mouseNoise *
-            0.9
-          );
-
-
-        float mouseMask =
-          1.0 -
-          smoothstep(
-
-            localRadius * 0.4,
-
-            localRadius,
-
-            mouseDistance
-
-          );
-
-
-        mouseMask *=
-          clamp(
-            u_mouseSpeed *
-            0.14,
-            0.0,
-            1.0
-          );
-
-
-        /* =====================================================
-           BREATHING PSYCHEDELIC FIELD
-           Makes the entire image subtly alive
-    ===================================================== */
-
-        float slowNoise =
-          fbm(
-
-            uv * 3.5 +
-
-            vec2(
-              u_time * 0.08,
-              -u_time * 0.06
-            )
-
-          );
-
-
-        float breathing =
-          sin(
-            u_time * 0.7 +
-            slowNoise * 6.28318
-          );
-
-
-        /* =====================================================
-           LIQUID FLOW FIELD
-           Creates melting / swimming distortion
-    ===================================================== */
-
-        float n1 =
-          fbm(
-
-            uv * 5.0 +
-
-            vec2(
-              u_time * 0.16,
-              -u_time * 0.11
-            )
-
-          );
-
-
-        float n2 =
-          fbm(
-
-            uv * 7.5 +
-
-            vec2(
-              -u_time * 0.12,
-              u_time * 0.18
-            )
-
-          );
-
-
-        vec2 liquidFlow =
-          vec2(
-
-            n1 - 0.5,
-
-            n2 - 0.5
-
-          );
-
-
-        float interactionEnergy =
-
-          mouseMask *
-
-          1.5 +
-
-          webcamMotion *
-
-          2.8 +
-
-          u_audio *
-
-          1.8;
-
-
-        float liquidAmount =
-
-          u_liquidStrength *
-
-          (
-            0.35 +
-
-            interactionEnergy +
-
-            u_audioPeak *
-            2.5
-
-          );
-
-
-        vec2 liquidUV =
-          uv +
-          liquidFlow *
-          liquidAmount;
-
-
-        liquidUV.x +=
-
-          sin(
-
-            uv.y * 11.0 +
-
-            n2 * 6.0 +
-
-            u_time * 0.7
-
-          ) *
-
-          (
-            0.002 +
-
-            interactionEnergy *
-            0.018
-
-          );
-
-
-        liquidUV.y +=
-
-          cos(
-
-            uv.x * 9.0 +
-
-            n1 * 7.0 -
-
-            u_time * 0.5
-
-          ) *
-
-          (
-            0.002 +
-
-            interactionEnergy *
-            0.015
-
-          );
-
-
-        /* =====================================================
-           BASE FOOTAGE
-           Distorted before display
-    ===================================================== */
-
-        vec3 base =
-          texture(
-            u_footage,
-            liquidUV
-          ).rgb;
-
-
-        /* =====================================================
-           TEMPORAL FEEDBACK TRAILS
-           Previous frames smear into the present
-    ===================================================== */
-
-        vec2 feedbackFlow =
-
-          liquidFlow *
-
-          (
-            0.012 +
-
-            webcamMotion *
-            0.05 +
-
-            u_audio *
-            0.06
-
-          );
-
-
-        vec3 feedbackA =
-          texture(
-
-            u_feedback,
-
-            uv -
-            feedbackFlow
-
-          ).rgb;
-
-
-        vec3 feedbackB =
-          texture(
-
-            u_feedback,
-
-            uv +
-            feedbackFlow *
-            0.55
-
-          ).rgb;
-
-
-        vec3 feedback =
-          mix(
-            feedbackA,
-            feedbackB,
-            0.38
-          );
-
-
-        /* =====================================================
-           CHROMATIC ABERRATION
-           Separates RGB channels organically
-    ===================================================== */
-
-        vec2 chromaDir =
-          normalize(
-            liquidFlow +
-            vec2(
-              0.0001
-            )
-          );
-
-
-        float chromaStrength =
-
-          0.002 +
-
-          webcamMotion *
-          0.026 +
-
-          u_audio *
-          0.03 +
-
-          mouseMask *
-          0.018;
-
-
-        vec3 rgbSplit;
-
-
-        rgbSplit.r =
-          texture(
-
-            u_feedback,
-
-            liquidUV +
-
-            chromaDir *
-            chromaStrength
-
-          ).r;
-
-
-        rgbSplit.g =
-          texture(
-
-            u_feedback,
-
-            liquidUV
-
-          ).g;
-
-
-        rgbSplit.b =
-          texture(
-
-            u_feedback,
-
-            liquidUV -
-
-            chromaDir *
-            chromaStrength
-
-          ).b;
-
-
-        /* =====================================================
-           PSYCHEDELIC COLOR FIELD
-           Continuous color morphing
-    ===================================================== */
-
-        float hueField =
-          fbm(
-
-            uv * 4.5 +
-
-            vec2(
-              u_time * 0.15,
-              -u_time * 0.09
-            )
-
-          );
-
-
-        float hueAngle =
-
-          (
-            hueField -
-            0.5
-          ) *
-
-          6.28318 *
-
-          (
-            0.7 +
-
-            u_audio *
-            2.5 +
-
-            webcamMotion *
-            2.0
-
-          );
-
-
-        vec3 psychedelic =
-          hueShift(
-
-            rgbSplit,
-
-            hueAngle
-
-          );
-
-
-        psychedelic =
-          saturateColor(
-
-            psychedelic,
-
-            u_colorStrength +
-
-            u_audio *
-            2.7 +
-
-            webcamMotion *
-            2.5
-
-          );
-
-
-        /* =====================================================
-           WEBCAM SILHOUETTE COLOR
-           Face/body appears only as a colored spectral residue
-    ===================================================== */
-
-        float ghostHue =
-          fbm(
-            uv * 3.2 +
-            u_time * 0.12
-          );
-
-
-        vec3 ghostColor =
-          hueShift(
-
-            webcamNow,
-
-            ghostHue *
-            6.28318 +
-
-            u_time *
-            0.35
-
-          );
-
-
-        ghostColor =
-          saturateColor(
-            ghostColor,
-            5.5
-          );
-
-
-        ghostColor *=
-          webcamGhost;
-
-
-        /* =====================================================
-           SOUND COLOR BLOOM
-           Loud sound creates bright color expansion
-    ===================================================== */
-
-        vec3 soundColor =
-          vec3(
-
-            0.5 +
-            0.5 *
-            sin(
-              u_time * 2.8
-            ),
-
-            0.5 +
-            0.5 *
-            sin(
-              u_time * 3.4 +
-              2.0
-            ),
-
-            0.5 +
-            0.5 *
-            sin(
-              u_time * 4.1 +
-              4.0
-            )
-
-          );
-
-
-        soundColor =
-          saturateColor(
-            soundColor,
-            4.0
-          );
-
-
-        /* =====================================================
-           FINAL MIX
-    ===================================================== */
-
-        vec3 color =
-          base;
-
-
-        /* Soft constant dream distortion */
-
-        color =
-          mix(
-
-            color,
-
-            feedback,
-
-            0.08 +
-            slowNoise * 0.05
-
-          );
-
-
-        /* Interaction-based feedback */
-
-        float feedbackMix =
-
-          clamp(
-
-            (
-              webcamMotion *
-              0.65 +
-
-              u_audio *
-              0.45 +
-
-              mouseMask *
-              0.45
-            ) *
-
-            u_feedbackStrength,
-
-            0.0,
-
-            0.88
-
-          );
-
-
-        color =
-          mix(
-
-            color,
-
-            feedback,
-
-            feedbackMix
-
-          );
-
-
-        /* Psychedelic RGB distortion */
-
-        float psychedelicMix =
-
-          clamp(
-
-            0.12 +
-
-            webcamMotion *
-            0.72 +
-
-            u_audio *
-            0.65 +
-
-            mouseMask *
-            0.65,
-
-            0.0,
-
-            0.95
-
-          );
-
-
-        color =
-          mix(
-
-            color,
-
-            psychedelic,
-
-            psychedelicMix
-
-          );
-
-
-        /* Webcam ghost silhouette */
-
-        color +=
-          ghostColor *
-          (
-            0.55 +
-
-            webcamMotion *
-            0.9
-          );
-
-
-        /* Sound bloom */
-
-        color =
-          mix(
-
-            color,
-
-            soundColor,
-
-            u_audioPeak *
-            u_audio *
-            0.18
-
-          );
-
-
-        /* =====================================================
-           BREATHING BRIGHTNESS
-           Subtle expansion / contraction
-    ===================================================== */
-
-        color *=
-
-          1.0 +
-
-          breathing *
-          0.035;
-
-
-        /* =====================================================
-           EXTREME SATURATION
-    ===================================================== */
-
-        color =
-          saturateColor(
-
-            color,
-
-            1.45 +
-
-            webcamMotion *
-            2.0 +
-
-            u_audio *
-            1.5
-
-          );
-
-
-        /* =====================================================
-           HIGHLIGHT BLOOM
-           Creates bright overexposed psychedelic areas
-    ===================================================== */
-
-        float brightness =
-          max(
-            color.r,
-            max(
-              color.g,
-              color.b
-            )
-          );
-
-
-        float bloom =
-          smoothstep(
-            0.72,
-            1.0,
-            brightness
-          );
-
-
-        color +=
-          color *
-          bloom *
-          (
-            0.18 +
-            u_audioPeak *
-            0.35
-          );
-
-
-        /* =====================================================
-           FINAL CONTRAST
-    ===================================================== */
-
-        color =
-          (
-            color -
-            0.5
-          ) *
-          1.12 +
-          0.5;
-
-
-        outColor =
-          vec4(
-
-            clamp(
-              color,
-              0.0,
-              1.0
-            ),
-
-            1.0
-
-          );
-
-      }
-
-    `;
-
-
-    /* =========================================================
-       DISPLAY SHADER
-       Displays final rendered texture
-    ========================================================= */
-
-    const displayShaderSource = `#version 300 es
-
-      precision highp float;
-
-      uniform sampler2D u_texture;
-
-      in vec2 v_uv;
-
-      out vec4 outColor;
-
-      void main() {
-
-        outColor =
-          texture(
-            u_texture,
-            v_uv
-          );
-
-      }
-
-    `;
-
-
-    /* =========================================================
-       SHADER COMPILER
-    ========================================================= */
-
-    function compileShader(type, source) {
-
-      const shader =
-        gl.createShader(type);
-
-      gl.shaderSource(
-        shader,
-        source
-      );
-
-      gl.compileShader(
-        shader
-      );
-
-
-      if (
-        !gl.getShaderParameter(
-          shader,
-          gl.COMPILE_STATUS
-        )
-      ) {
-
-        console.error(
-          gl.getShaderInfoLog(shader)
-        );
-
-        throw new Error(
-          "Shader compilation failed"
-        );
-
-      }
-
-      return shader;
-    }
-
-
-    /* =========================================================
-       WEBGL PROGRAM CREATOR
-    ========================================================= */
-
-    function createProgram(
-      vertexSource,
-      fragmentSource
-    ) {
-
-      const program =
-        gl.createProgram();
-
-
-      gl.attachShader(
-        program,
-        compileShader(
-          gl.VERTEX_SHADER,
-          vertexSource
-        )
-      );
-
-
-      gl.attachShader(
-        program,
-        compileShader(
-          gl.FRAGMENT_SHADER,
-          fragmentSource
-        )
-      );
-
-
-      gl.linkProgram(
-        program
-      );
-
-
-      if (
-        !gl.getProgramParameter(
-          program,
-          gl.LINK_STATUS
-        )
-      ) {
-
-        console.error(
-          gl.getProgramInfoLog(program)
-        );
-
-        throw new Error(
-          "Program link failed"
-        );
-
-      }
-
-
-      return program;
-
-    }
-
-
-    /* =========================================================
-       CREATE WEBGL PROGRAMS
-    ========================================================= */
-
-    const psychedelicProgram =
-      createProgram(
-        vertexShaderSource,
-        fragmentShaderSource
-      );
-
-
-    const displayProgram =
-      createProgram(
-        vertexShaderSource,
-        displayShaderSource
-      );
-
-
-    /* =========================================================
-       FULL-SCREEN GEOMETRY
-    ========================================================= */
-
-    const positionBuffer =
-      gl.createBuffer();
-
-
-    gl.bindBuffer(
-      gl.ARRAY_BUFFER,
-      positionBuffer
-    );
-
-
-    gl.bufferData(
-
-      gl.ARRAY_BUFFER,
-
-      new Float32Array([
-
-        -1, -1,
-         1, -1,
-        -1,  1,
-
-        -1,  1,
-         1, -1,
-         1,  1
-
-      ]),
-
-      gl.STATIC_DRAW
-
-    );
-
-
-    /* =========================================================
-       TEXTURE CREATOR
-    ========================================================= */
-
-    function createTexture() {
-
-      const texture =
-        gl.createTexture();
-
-
-      gl.bindTexture(
-        gl.TEXTURE_2D,
-        texture
-      );
-
-
-      gl.texParameteri(
-        gl.TEXTURE_2D,
-        gl.TEXTURE_MIN_FILTER,
-        gl.LINEAR
-      );
-
-
-      gl.texParameteri(
-        gl.TEXTURE_2D,
-        gl.TEXTURE_MAG_FILTER,
-        gl.LINEAR
-      );
-
-
-      gl.texParameteri(
-        gl.TEXTURE_2D,
-        gl.TEXTURE_WRAP_S,
-        gl.CLAMP_TO_EDGE
-      );
-
-
-      gl.texParameteri(
-        gl.TEXTURE_2D,
-        gl.TEXTURE_WRAP_T,
-        gl.CLAMP_TO_EDGE
-      );
-
-
-      return texture;
-
-    }
-
-
-    /* =========================================================
-       VIDEO TEXTURES
-    ========================================================= */
-
-    const footageTexture =
-      createTexture();
-
-    const webcamTexture =
-      createTexture();
-
-    const previousWebcamTexture =
-      createTexture();
-
-
-    /* =========================================================
-       TEMPORAL FEEDBACK TEXTURES
-    ========================================================= */
-
-    let feedbackTextureA =
-      createTexture();
-
-    let feedbackTextureB =
-      createTexture();
-
-
-    let framebufferA =
-      gl.createFramebuffer();
-
-    let framebufferB =
-      gl.createFramebuffer();
-
-
-    /* =========================================================
-       FEEDBACK TEXTURE ALLOCATION
-    ========================================================= */
-
-    function allocateTexture(texture) {
-
-      gl.bindTexture(
-        gl.TEXTURE_2D,
-        texture
-      );
-
-
-      gl.texImage2D(
-
-        gl.TEXTURE_2D,
-
-        0,
-
-        gl.RGBA,
-
-        canvas.width,
-        canvas.height,
-
-        0,
-
-        gl.RGBA,
-
-        gl.UNSIGNED_BYTE,
-
-        null
-
-      );
-
-    }
-
-
-    /* =========================================================
-       FRAMEBUFFER SETUP
-    ========================================================= */
-
-    function setupFramebuffer(
-      framebuffer,
-      texture
-    ) {
-
-      gl.bindFramebuffer(
-        gl.FRAMEBUFFER,
-        framebuffer
-      );
-
-
-      gl.framebufferTexture2D(
-
-        gl.FRAMEBUFFER,
-
-        gl.COLOR_ATTACHMENT0,
-
-        gl.TEXTURE_2D,
-
-        texture,
-
-        0
-
-      );
-
-    }
-
-
-    /* =========================================================
-       CANVAS RESIZE
-    ========================================================= */
-
-    function resize() {
-
-      const dpr =
-        Math.min(
-          devicePixelRatio || 1,
-          1.5
-        );
-
+    function resizeHydra() {
 
       canvas.width =
-        Math.floor(
-          innerWidth * dpr
-        );
-
+        window.innerWidth;
 
       canvas.height =
-        Math.floor(
-          innerHeight * dpr
+        window.innerHeight;
+
+
+      if (
+        typeof setResolution === "function"
+      ) {
+
+        setResolution(
+          window.innerWidth,
+          window.innerHeight
         );
 
-
-      footageBuffer.width =
-        canvas.width;
-
-      footageBuffer.height =
-        canvas.height;
-
-
-      webcamBuffer.width =
-        canvas.width;
-
-      webcamBuffer.height =
-        canvas.height;
-
-
-      previousWebcamBuffer.width =
-        canvas.width;
-
-      previousWebcamBuffer.height =
-        canvas.height;
-
-
-      allocateTexture(
-        feedbackTextureA
-      );
-
-
-      allocateTexture(
-        feedbackTextureB
-      );
-
-
-      setupFramebuffer(
-        framebufferA,
-        feedbackTextureA
-      );
-
-
-      setupFramebuffer(
-        framebufferB,
-        feedbackTextureB
-      );
-
-
-      gl.bindFramebuffer(
-        gl.FRAMEBUFFER,
-        null
-      );
-
-
-      gl.viewport(
-        0,
-        0,
-        canvas.width,
-        canvas.height
-      );
+      }
 
     }
 
 
-    resize();
+    resizeHydra();
 
 
-    addEventListener(
+    window.addEventListener(
       "resize",
-      resize
+      resizeHydra
     );
 
 
     /* =========================================================
-       VIDEO COVER DRAWING
-       Preserves video aspect ratio
+       MAIN FOOTAGE SOURCE
+       Hydra source s0 = background footage
     ========================================================= */
 
-    function drawVideoCover(
-      context,
-      video,
-      width,
-      height,
-      mirror = false
-    ) {
+    footage.addEventListener(
+      "loadeddata",
+      () => {
 
-      if (
-        video.readyState < 2 ||
-        !video.videoWidth ||
-        !video.videoHeight
-      ) {
-        return;
-      }
-
-
-      const videoRatio =
-        video.videoWidth /
-        video.videoHeight;
-
-
-      const targetRatio =
-        width /
-        height;
-
-
-      let sx = 0;
-      let sy = 0;
-
-      let sw =
-        video.videoWidth;
-
-      let sh =
-        video.videoHeight;
-
-
-      if (
-        videoRatio >
-        targetRatio
-      ) {
-
-        sh =
-          video.videoHeight;
-
-        sw =
-          sh *
-          targetRatio;
-
-        sx =
-          (
-            video.videoWidth -
-            sw
-          ) / 2;
+        s0.init({
+          src: footage
+        });
 
       }
+    );
 
-      else {
 
-        sw =
-          video.videoWidth;
+    /* =========================================================
+       MOUSE TRACKING
+       Mouse is only a subtle local disturbance
+    ========================================================= */
 
-        sh =
-          sw /
-          targetRatio;
+    window.addEventListener(
+      "mousemove",
+      event => {
 
-        sy =
-          (
-            video.videoHeight -
-            sh
-          ) / 2;
+        const x =
+          event.clientX /
+          window.innerWidth;
+
+
+        const y =
+          event.clientY /
+          window.innerHeight;
+
+
+        const dx =
+          x -
+          lastMouseX;
+
+
+        const dy =
+          y -
+          lastMouseY;
+
+
+        mouseEnergy =
+          Math.min(
+            1,
+            Math.hypot(
+              dx,
+              dy
+            ) * 18
+          );
+
+
+        mouseX = x;
+
+        mouseY = y;
+
+
+        lastMouseX = x;
+
+        lastMouseY = y;
 
       }
-
-
-      context.save();
-
-
-      if (mirror) {
-
-        context.translate(
-          width,
-          0
-        );
-
-        context.scale(
-          -1,
-          1
-        );
-
-      }
-
-
-      context.drawImage(
-
-        video,
-
-        sx,
-        sy,
-
-        sw,
-        sh,
-
-        0,
-        0,
-
-        width,
-        height
-
-      );
-
-
-      context.restore();
-
-    }
+    );
 
 
     /* =========================================================
@@ -1946,6 +388,11 @@
             });
 
 
+          /* =====================================================
+             WEBCAM SOURCE
+             Hydra source s1 = live webcam
+          ===================================================== */
+
           webcam.srcObject =
             stream;
 
@@ -1953,11 +400,13 @@
           await webcam.play();
 
 
-          webcamActive = true;
+          s1.init({
+            src: webcam
+          });
 
 
           /* =====================================================
-             AUDIO ANALYSER
+             MICROPHONE ANALYSER
           ===================================================== */
 
           const AudioContext =
@@ -1972,7 +421,7 @@
           await audioContext.resume();
 
 
-          const source =
+          const microphone =
             audioContext.createMediaStreamSource(
               stream
             );
@@ -1987,10 +436,10 @@
 
 
           analyser.smoothingTimeConstant =
-            0.18;
+            0.12;
 
 
-          source.connect(
+          microphone.connect(
             analyser
           );
 
@@ -2009,14 +458,22 @@
             "active"
           );
 
+
+          /* =====================================================
+             START HYDRA VISUAL PATCH
+          ===================================================== */
+
+          startHydraPatch();
+
         }
 
-        catch (error) {
+        catch(error) {
 
           console.error(error);
 
+
           startButton.textContent =
-            "ACCESS FAILED";
+            "CAMERA / SOUND FAILED";
 
         }
 
@@ -2025,7 +482,8 @@
 
 
     /* =========================================================
-       STRONG AUDIO ANALYSIS
+       AUDIO ANALYSIS
+       Converts microphone amplitude to 0–1 values
     ========================================================= */
 
     function updateAudio() {
@@ -2036,7 +494,12 @@
       ) {
 
         audioLevel *= 0.86;
+
         audioPeak *= 0.80;
+
+        requestAnimationFrame(
+          updateAudio
+        );
 
         return;
 
@@ -2088,637 +551,516 @@
 
       audioLevel =
         audioLevel *
-        0.28 +
-
+        0.26 +
         target *
-        0.72;
+        0.74;
 
 
       audioPeak =
         Math.max(
-
           target,
-
           audioPeak *
-          0.78
-
-        );
-
-    }
-
-
-    /* =========================================================
-       MOUSE TRACKING
-       Mouse affects only a small local region
-    ========================================================= */
-
-    addEventListener(
-      "mousemove",
-      (event) => {
-
-        const x =
-          event.clientX /
-          innerWidth;
-
-
-        const y =
-          1 -
-          event.clientY /
-          innerHeight;
-
-
-        const dx =
-          x -
-          previousMouseX;
-
-
-        const dy =
-          y -
-          previousMouseY;
-
-
-        mouseSpeed =
-          Math.sqrt(
-            dx * dx +
-            dy * dy
-          ) *
-          100;
-
-
-        mouseX = x;
-
-        mouseY = y;
-
-
-        previousMouseX = x;
-
-        previousMouseY = y;
-
-      }
-    );
-
-
-    /* =========================================================
-       TEXTURE UPLOAD
-    ========================================================= */
-
-    function uploadTexture(
-      texture,
-      sourceCanvas
-    ) {
-
-      gl.bindTexture(
-        gl.TEXTURE_2D,
-        texture
-      );
-
-
-      gl.pixelStorei(
-        gl.UNPACK_FLIP_Y_WEBGL,
-        true
-      );
-
-
-      gl.texImage2D(
-
-        gl.TEXTURE_2D,
-
-        0,
-
-        gl.RGBA,
-
-        gl.RGBA,
-
-        gl.UNSIGNED_BYTE,
-
-        sourceCanvas
-
-      );
-
-    }
-
-
-    /* =========================================================
-       POSITION ATTRIBUTE SETUP
-    ========================================================= */
-
-    function setupPositionAttribute(
-      program
-    ) {
-
-      const location =
-        gl.getAttribLocation(
-          program,
-          "a_position"
+          0.76
         );
 
 
-      gl.bindBuffer(
-        gl.ARRAY_BUFFER,
-        positionBuffer
-      );
-
-
-      gl.enableVertexAttribArray(
-        location
-      );
-
-
-      gl.vertexAttribPointer(
-
-        location,
-
-        2,
-
-        gl.FLOAT,
-
-        false,
-
-        0,
-
-        0
-
-      );
-
-    }
-
-
-    /* =========================================================
-       TEXTURE BINDING
-    ========================================================= */
-
-    function bindTexture(
-      program,
-      name,
-      texture,
-      unit
-    ) {
-
-      gl.activeTexture(
-        gl.TEXTURE0 +
-        unit
-      );
-
-
-      gl.bindTexture(
-        gl.TEXTURE_2D,
-        texture
-      );
-
-
-      gl.uniform1i(
-
-        gl.getUniformLocation(
-          program,
-          name
-        ),
-
-        unit
-
-      );
-
-    }
-
-
-    /* =========================================================
-       FEEDBACK STATE
-       Alternates between two temporal textures
-    ========================================================= */
-
-    let readTexture =
-      feedbackTextureA;
-
-    let writeTexture =
-      feedbackTextureB;
-
-
-    let readFramebuffer =
-      framebufferA;
-
-    let writeFramebuffer =
-      framebufferB;
-
-
-    /* =========================================================
-       MAIN ANIMATION LOOP
-    ========================================================= */
-
-    function render(timeMilliseconds) {
-
-      const time =
-        timeMilliseconds *
-        0.001;
-
-
-      updateAudio();
-
-
-      mouseSpeed *=
-        0.86;
-
-
-      /* =====================================================
-         UPDATE FOOTAGE FRAME
-      ===================================================== */
-
-      footageCtx.clearRect(
-        0,
-        0,
-        footageBuffer.width,
-        footageBuffer.height
-      );
-
-
-      drawVideoCover(
-
-        footageCtx,
-
-        footage,
-
-        footageBuffer.width,
-
-        footageBuffer.height
-
-      );
-
-
-      /* =====================================================
-         UPDATE WEBCAM FRAME
-      ===================================================== */
-
-      if (
-        webcamActive &&
-        webcam.readyState >= 2
-      ) {
-
-        webcamCtx.clearRect(
-          0,
-          0,
-          webcamBuffer.width,
-          webcamBuffer.height
-        );
-
-
-        drawVideoCover(
-
-          webcamCtx,
-
-          webcam,
-
-          webcamBuffer.width,
-
-          webcamBuffer.height,
-
-          true
-
-        );
-
-      }
-
-      else {
-
-        webcamCtx.clearRect(
-          0,
-          0,
-          webcamBuffer.width,
-          webcamBuffer.height
-        );
-
-      }
-
-
-      /* =====================================================
-         UPLOAD VIDEO TEXTURES
-      ===================================================== */
-
-      uploadTexture(
-        footageTexture,
-        footageBuffer
-      );
-
-
-      uploadTexture(
-        webcamTexture,
-        webcamBuffer
-      );
-
-
-      uploadTexture(
-        previousWebcamTexture,
-        previousWebcamBuffer
-      );
-
-
-      /* =====================================================
-         RENDER PSYCHEDELIC FRAME INTO FEEDBACK BUFFER
-      ===================================================== */
-
-      gl.bindFramebuffer(
-        gl.FRAMEBUFFER,
-        writeFramebuffer
-      );
-
-
-      gl.viewport(
-        0,
-        0,
-        canvas.width,
-        canvas.height
-      );
-
-
-      gl.useProgram(
-        psychedelicProgram
-      );
-
-
-      setupPositionAttribute(
-        psychedelicProgram
-      );
-
-
-      bindTexture(
-        psychedelicProgram,
-        "u_footage",
-        footageTexture,
-        0
-      );
-
-
-      bindTexture(
-        psychedelicProgram,
-        "u_webcam",
-        webcamTexture,
-        1
-      );
-
-
-      bindTexture(
-        psychedelicProgram,
-        "u_previousWebcam",
-        previousWebcamTexture,
-        2
-      );
-
-
-      bindTexture(
-        psychedelicProgram,
-        "u_feedback",
-        readTexture,
-        3
-      );
-
-
-      /* =====================================================
-         SEND INTERACTION VALUES TO SHADER
-      ===================================================== */
-
-      gl.uniform2f(
-
-        gl.getUniformLocation(
-          psychedelicProgram,
-          "u_mouse"
-        ),
-
-        mouseX,
-        mouseY
-
-      );
-
-
-      gl.uniform1f(
-
-        gl.getUniformLocation(
-          psychedelicProgram,
-          "u_mouseSpeed"
-        ),
-
-        mouseSpeed
-
-      );
-
-
-      gl.uniform1f(
-
-        gl.getUniformLocation(
-          psychedelicProgram,
-          "u_time"
-        ),
-
-        time
-
-      );
-
-
-      gl.uniform1f(
-
-        gl.getUniformLocation(
-          psychedelicProgram,
-          "u_audio"
-        ),
-
-        audioLevel
-
-      );
-
-
-      gl.uniform1f(
-
-        gl.getUniformLocation(
-          psychedelicProgram,
-          "u_audioPeak"
-        ),
-
-        audioPeak
-
-      );
-
-
-      gl.uniform1f(
-
-        gl.getUniformLocation(
-          psychedelicProgram,
-          "u_webcamActive"
-        ),
-
-        webcamActive
-          ? 1
-          : 0
-
-      );
-
-
-      gl.uniform1f(
-
-        gl.getUniformLocation(
-          psychedelicProgram,
-          "u_mouseRadius"
-        ),
-
-        MOUSE_RADIUS
-
-      );
-
-
-      gl.uniform1f(
-
-        gl.getUniformLocation(
-          psychedelicProgram,
-          "u_webcamGhostStrength"
-        ),
-
-        WEBCAM_GHOST_STRENGTH
-
-      );
-
-
-      gl.uniform1f(
-
-        gl.getUniformLocation(
-          psychedelicProgram,
-          "u_webcamMotionStrength"
-        ),
-
-        WEBCAM_MOTION_STRENGTH
-
-      );
-
-
-      gl.uniform1f(
-
-        gl.getUniformLocation(
-          psychedelicProgram,
-          "u_liquidStrength"
-        ),
-
-        LIQUID_STRENGTH
-
-      );
-
-
-      gl.uniform1f(
-
-        gl.getUniformLocation(
-          psychedelicProgram,
-          "u_colorStrength"
-        ),
-
-        COLOR_STRENGTH
-
-      );
-
-
-      gl.uniform1f(
-
-        gl.getUniformLocation(
-          psychedelicProgram,
-          "u_feedbackStrength"
-        ),
-
-        FEEDBACK_STRENGTH
-
-      );
-
-
-      gl.drawArrays(
-        gl.TRIANGLES,
-        0,
-        6
-      );
-
-
-      /* =====================================================
-         DISPLAY FINAL FRAME
-      ===================================================== */
-
-      gl.bindFramebuffer(
-        gl.FRAMEBUFFER,
-        null
-      );
-
-
-      gl.useProgram(
-        displayProgram
-      );
-
-
-      setupPositionAttribute(
-        displayProgram
-      );
-
-
-      bindTexture(
-        displayProgram,
-        "u_texture",
-        writeTexture,
-        0
-      );
-
-
-      gl.drawArrays(
-        gl.TRIANGLES,
-        0,
-        6
-      );
-
-
-      /* =====================================================
-         STORE CURRENT WEBCAM AS PREVIOUS FRAME
-      ===================================================== */
-
-      previousWebcamCtx.clearRect(
-        0,
-        0,
-        previousWebcamBuffer.width,
-        previousWebcamBuffer.height
-      );
-
-
-      previousWebcamCtx.drawImage(
-        webcamBuffer,
-        0,
-        0
-      );
-
-
-      /* =====================================================
-         SWAP TEMPORAL FEEDBACK BUFFERS
-      ===================================================== */
-
-      [
-        readTexture,
-        writeTexture
-      ] =
-      [
-        writeTexture,
-        readTexture
-      ];
-
-
-      [
-        readFramebuffer,
-        writeFramebuffer
-      ] =
-      [
-        writeFramebuffer,
-        readFramebuffer
-      ];
+      mouseEnergy *=
+        0.88;
 
 
       requestAnimationFrame(
-        render
+        updateAudio
       );
 
     }
 
 
+    updateAudio();
+
+
     /* =========================================================
-       START VISUAL SYSTEM
+       HYDRA PSYCHEDELIC PATCH
+       This is the core visual language
     ========================================================= */
 
-    requestAnimationFrame(
-      render
-    );
+    function startHydraPatch() {
+
+
+      /* =====================================================
+         WEBCAM GHOST SOURCE
+         Webcam is heavily distorted BEFORE it is mixed
+         with the footage.
+
+         o1 becomes a liquid, colored, unstable camera ghost.
+      ===================================================== */
+
+      src(s1)
+
+        .scale(
+          () =>
+            1.015 +
+            audioLevel * 0.035
+        )
+
+        .modulate(
+
+          noise(
+            2.2,
+            0.045
+          )
+
+            .rotate(
+              () =>
+                time * 0.025
+            )
+
+            .scale(
+              1.25
+            ),
+
+          () =>
+            0.055 +
+            audioLevel * 0.17
+        )
+
+        .modulateHue(
+
+          noise(
+            1.6,
+            0.025
+          )
+
+            .colorama(
+              0.3
+            ),
+
+          () =>
+            0.8 +
+            audioLevel * 2.8
+        )
+
+        .colorama(
+
+          () =>
+            0.012 +
+            audioLevel * 0.08
+        )
+
+        .saturate(
+
+          () =>
+            3.8 +
+            audioLevel * 5
+        )
+
+        .contrast(
+
+          () =>
+            1.15 +
+            audioLevel * 0.7
+        )
+
+        .posterize(
+          12,
+          0.75
+        )
+
+        /* ===================================================
+           CAMERA FEEDBACK
+           This is what causes the face to smear,
+           persist and merge instead of appearing clean.
+        =================================================== */
+
+        .blend(
+
+          src(o1)
+
+            .scale(
+
+              () =>
+                1.006 +
+                audioLevel * 0.018
+            )
+
+            .rotate(
+
+              () =>
+                Math.sin(time * 0.12) *
+                0.006
+            )
+
+            .scrollX(
+
+              () =>
+                Math.sin(time * 0.21) *
+                0.004
+            )
+
+            .scrollY(
+
+              () =>
+                Math.cos(time * 0.17) *
+                0.004
+            )
+
+            .modulate(
+
+              noise(
+                1.4,
+                0.02
+              ),
+
+              () =>
+                0.015 +
+                audioPeak * 0.065
+            ),
+
+          () =>
+            0.52 +
+            audioLevel * 0.22
+        )
+
+        .out(o1);
+
+
+
+      /* =====================================================
+         FOOTAGE LIQUID BASE
+         Footage stays visible but is continuously warped.
+      ===================================================== */
+
+      src(s0)
+
+        .saturate(
+          2.4
+        )
+
+        .contrast(
+          1.12
+        )
+
+        .colorama(
+          0.006
+        )
+
+        /* ===================================================
+           WEBCAM AS GEOMETRIC FORCE
+           Camera doesn't merely sit over footage.
+           Its colors physically warp footage coordinates.
+        =================================================== */
+
+        .modulate(
+
+          src(o1)
+
+            .saturate(
+              0
+            )
+
+            .contrast(
+              1.65
+            ),
+
+          () =>
+            CAMERA_WARP +
+            audioLevel * 0.22
+        )
+
+        /* ===================================================
+           SLOW LIQUID WORLD DISTORTION
+        =================================================== */
+
+        .modulate(
+
+          noise(
+
+            2.1,
+
+            () =>
+              0.018 +
+              audioLevel * 0.05
+          )
+
+            .scale(
+              1.5
+            )
+
+            .rotate(
+              () =>
+                time * 0.015
+            ),
+
+          () =>
+            0.018 +
+            audioLevel * 0.075
+        )
+
+        /* ===================================================
+           CAMERA + FOOTAGE MERGE
+           The webcam ghost is now mixed INTO the footage.
+        =================================================== */
+
+        .blend(
+
+          src(o1)
+
+            .colorama(
+
+              () =>
+                0.02 +
+                Math.sin(
+                  time * 0.13
+                ) *
+                0.015
+            )
+
+            .saturate(
+
+              () =>
+                4 +
+                audioLevel * 5
+            )
+
+            .modulate(
+
+              src(s0)
+
+                .saturate(
+                  0
+                )
+
+                .contrast(
+                  1.4
+                ),
+
+              0.05
+            ),
+
+          () =>
+            CAMERA_PRESENCE +
+            audioLevel * 0.18
+        )
+
+        /* ===================================================
+           FULL-SCENE TEMPORAL FEEDBACK
+           Previous output melts back into the current image.
+        =================================================== */
+
+        .blend(
+
+          src(o0)
+
+            .scale(
+
+              () =>
+                1.003 +
+                audioLevel * 0.014
+            )
+
+            .rotate(
+
+              () =>
+                Math.sin(
+                  time * 0.08
+                ) *
+                0.004
+            )
+
+            .modulate(
+
+              noise(
+                1.3,
+                0.015
+              ),
+
+              () =>
+                0.012 +
+                audioLevel * 0.07
+            )
+
+            .colorama(
+
+              () =>
+                COLOR_AMOUNT +
+                audioLevel * 0.04
+            )
+
+            .saturate(
+
+              () =>
+                1.8 +
+                audioLevel * 3.2
+            ),
+
+          () =>
+            FEEDBACK_AMOUNT +
+            audioLevel * 0.12
+        )
+
+        /* ===================================================
+           CHROMATIC BLEED
+           RGB channels continuously contaminate one another.
+        =================================================== */
+
+        .add(
+
+          src(o0)
+
+            .scrollX(
+
+              () =>
+                0.002 +
+                audioPeak * 0.018
+            )
+
+            .color(
+              1.35,
+              0.08,
+              0.25
+            ),
+
+          () =>
+            0.08 +
+            audioPeak * 0.16
+        )
+
+        .add(
+
+          src(o0)
+
+            .scrollX(
+
+              () =>
+                -0.003 -
+                audioPeak * 0.015
+            )
+
+            .color(
+              0.05,
+              0.9,
+              1.4
+            ),
+
+          () =>
+            0.07 +
+            audioPeak * 0.15
+        )
+
+        /* ===================================================
+           PSYCHEDELIC COLOR OVERDRIVE
+        =================================================== */
+
+        .colorama(
+
+          () =>
+            0.008 +
+            audioLevel * 0.045 +
+            Math.sin(
+              time * 0.1
+            ) *
+            0.006
+        )
+
+        .saturate(
+
+          () =>
+            2.8 +
+            audioLevel * 4.5
+        )
+
+        .contrast(
+
+          () =>
+            1.08 +
+            audioPeak * 0.3
+        )
+
+        .brightness(
+
+          () =>
+            0.02 +
+            audioPeak * 0.08
+        )
+
+        .out(o0);
+
+
+
+      /* =====================================================
+         SMALL LOCAL MOUSE DISTURBANCE
+         Mouse does not control the whole image.
+         It only introduces an additional localized energy source.
+      ===================================================== */
+
+      noise(
+        6,
+        0.12
+      )
+
+        .mask(
+
+          shape(
+            80,
+
+            () =>
+              0.045 +
+              mouseEnergy *
+              MOUSE_EFFECT,
+
+            0.25
+          )
+
+            .scrollX(
+
+              () =>
+                mouseX -
+                0.5
+            )
+
+            .scrollY(
+
+              () =>
+                mouseY -
+                0.5
+            )
+
+        )
+
+        .contrast(
+          2
+        )
+
+        .out(o2);
+
+
+
+      /* =====================================================
+         FINAL MOUSE MODULATION
+         Uses the tiny masked area to disturb the final image.
+      ===================================================== */
+
+      src(o0)
+
+        .modulate(
+
+          src(o2),
+
+          () =>
+            mouseEnergy *
+            0.09
+        )
+
+        .out(o3);
+
+
+
+      /* =====================================================
+         FINAL OUTPUT
+    ===================================================== */
+
+      render(o3);
+
+    }
 
   </script>
 
