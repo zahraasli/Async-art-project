@@ -1,46 +1,126 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Async Art Project</title>
 
   <style>
+
+    /* =========================================================
+       PAGE RESET
+       Removes default browser spacing
+    ========================================================= */
+
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
 
-    html, body {
+
+    /* =========================================================
+       PAGE BACKGROUND
+       Change the background color here
+    ========================================================= */
+
+    html,
+    body {
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: blue;
+      background: #0000ff;
       cursor: crosshair;
+      font-family: Arial, Helvetica, sans-serif;
     }
+
+
+    /* =========================================================
+       VIDEO / WEBCAM FOOTAGE
+       This element displays either the default video
+       or the live webcam
+    ========================================================= */
 
     #video {
       position: fixed;
       inset: 0;
+
       width: 100%;
       height: 100%;
+
       object-fit: cover;
+
       z-index: 1;
     }
+
+
+    /* =========================================================
+       GLITCH CANVAS
+       All glitch effects are drawn on this canvas
+    ========================================================= */
 
     #glitchCanvas {
       position: fixed;
       inset: 0;
+
       width: 100%;
       height: 100%;
+
       z-index: 2;
+
       pointer-events: none;
     }
+
+
+    /* =========================================================
+       WEBCAM BUTTON
+       Button used to activate the live camera
+    ========================================================= */
+
+    #webcamButton {
+      position: fixed;
+
+      top: 20px;
+      left: 20px;
+
+      z-index: 10;
+
+      padding: 10px 16px;
+
+      border: 1px solid white;
+
+      background: rgba(0, 0, 0, 0.65);
+
+      color: white;
+
+      font-size: 12px;
+      letter-spacing: 1px;
+
+      cursor: pointer;
+    }
+
+
+    /* =========================================================
+       WEBCAM BUTTON HOVER
+    ========================================================= */
+
+    #webcamButton:hover {
+      background: white;
+      color: black;
+    }
+
   </style>
 </head>
 
+
 <body>
+
+
+  <!-- =========================================================
+       DEFAULT FOOTAGE
+       Replace this URL later with your own video file
+  ========================================================== -->
 
   <video
     id="video"
@@ -50,265 +130,905 @@
     playsinline
     crossorigin="anonymous"
   >
+
     <source
       src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
       type="video/mp4"
     />
+
   </video>
+
+
+  <!-- =========================================================
+       WEBCAM CONTROL
+  ========================================================== -->
+
+  <button id="webcamButton">
+    USE WEBCAM
+  </button>
+
+
+  <!-- =========================================================
+       GLITCH EFFECT CANVAS
+  ========================================================== -->
 
   <canvas id="glitchCanvas"></canvas>
 
+
   <script>
+
+    /* =========================================================
+       HTML ELEMENT REFERENCES
+    ========================================================= */
+
     const video = document.getElementById("video");
+
     const canvas = document.getElementById("glitchCanvas");
+
     const ctx = canvas.getContext("2d");
 
+    const webcamButton =
+      document.getElementById("webcamButton");
+
+
+    /* =========================================================
+       VIDEO BUFFER
+       Hidden canvas used to capture the current video frame
+    ========================================================= */
+
     const buffer = document.createElement("canvas");
+
     const bctx = buffer.getContext("2d");
 
+
+    /* =========================================================
+       MOUSE POSITION
+    ========================================================= */
+
     let lastX = innerWidth / 2;
+
     let lastY = innerHeight / 2;
 
+
+    /* =========================================================
+       GLITCH INTENSITY SETTINGS
+       Increase these values for even more distortion
+    ========================================================= */
+
+    const GLITCH_POWER = 2.7;
+
+    const MAX_RADIUS = 850;
+
+    const MIN_RADIUS = 250;
+
+    const BURST_MIN = 16;
+
+    const BURST_RANDOM = 14;
+
+
+    /* =========================================================
+       SHARP GLITCH COLORS
+       Change / add colors here
+    ========================================================= */
+
+    const glitchColors = [
+      "#ff003c",
+      "#ff0000",
+      "#ff5e00",
+      "#ffff00",
+      "#d7ff00",
+      "#00ff66",
+      "#00fff7",
+      "#00a2ff",
+      "#4d00ff",
+      "#8200ff",
+      "#ff00d4",
+      "#ff0088"
+    ];
+
+
+    /* =========================================================
+       CANVAS RESIZE
+       Keeps canvases equal to browser size
+    ========================================================= */
+
     function resize() {
+
       canvas.width = innerWidth;
+
       canvas.height = innerHeight;
+
       buffer.width = innerWidth;
+
       buffer.height = innerHeight;
+
     }
+
 
     resize();
+
     addEventListener("resize", resize);
 
-    addEventListener("mousemove", (e) => {
-      if (video.readyState < 2) return;
 
-      const x = e.clientX;
-      const y = e.clientY;
+    /* =========================================================
+       WEBCAM ACTIVATION
+       Requests access to the user's camera
+    ========================================================= */
 
-      const dx = x - lastX;
-      const dy = y - lastY;
-      const speed = Math.hypot(dx, dy);
+    webcamButton.addEventListener("click", async () => {
 
-      createGlitch(x, y, speed);
+      try {
 
-      lastX = x;
-      lastY = y;
+        const stream =
+          await navigator.mediaDevices.getUserMedia({
+
+            video: {
+              facingMode: "user"
+            },
+
+            audio: false
+
+          });
+
+
+        /* Remove default video source */
+
+        video.pause();
+
+        video.removeAttribute("src");
+
+        while (video.firstChild) {
+          video.removeChild(video.firstChild);
+        }
+
+
+        /* Attach webcam stream */
+
+        video.srcObject = stream;
+
+        video.loop = false;
+
+        video.muted = true;
+
+        await video.play();
+
+
+        /* Change button label */
+
+        webcamButton.textContent = "WEBCAM ACTIVE";
+
+      }
+
+      catch (error) {
+
+        console.error(
+          "Webcam access failed:",
+          error
+        );
+
+        webcamButton.textContent =
+          "CAMERA ACCESS FAILED";
+
+      }
+
     });
 
-    function createGlitch(x, y, speed) {
-      bctx.clearRect(0, 0, buffer.width, buffer.height);
-      bctx.drawImage(video, 0, 0, buffer.width, buffer.height);
 
-      const radius = Math.min(
-        520,
-        Math.max(180, 220 + speed * 5)
+    /* =========================================================
+       MOUSE INTERACTION
+       Glitch intensity reacts to mouse movement speed
+    ========================================================= */
+
+    addEventListener("mousemove", (event) => {
+
+      if (video.readyState < 2) return;
+
+
+      const x = event.clientX;
+
+      const y = event.clientY;
+
+
+      const dx = x - lastX;
+
+      const dy = y - lastY;
+
+
+      const speed =
+        Math.hypot(dx, dy);
+
+
+      createGlitch(
+        x,
+        y,
+        speed
       );
 
-     
-      const bursts = 10 + Math.floor(Math.random() * 3);
 
-      for (let b = 0; b < bursts; b++) {
+      lastX = x;
+
+      lastY = y;
+
+    });
+
+
+    /* =========================================================
+       GLITCH GENERATOR
+       Creates multiple glitch bursts around mouse position
+    ========================================================= */
+
+    function createGlitch(x, y, speed) {
+
+      /* Capture current video frame */
+
+      bctx.clearRect(
+        0,
+        0,
+        buffer.width,
+        buffer.height
+      );
+
+
+      bctx.drawImage(
+        video,
+        0,
+        0,
+        buffer.width,
+        buffer.height
+      );
+
+
+      /* Calculate glitch radius */
+
+      const radius =
+        Math.min(
+          MAX_RADIUS,
+
+          Math.max(
+            MIN_RADIUS,
+            300 + speed * 8 * GLITCH_POWER
+          )
+        );
+
+
+      /* Number of glitch explosions */
+
+      const bursts =
+        BURST_MIN +
+        Math.floor(
+          Math.random() *
+          BURST_RANDOM *
+          GLITCH_POWER
+        );
+
+
+      for (
+        let burst = 0;
+        burst < bursts;
+        burst++
+      ) {
 
         const localX =
-          x + (Math.random() - 0.5) * radius * 1.2;
+          x +
+          (Math.random() - 0.5) *
+          radius *
+          1.8;
+
 
         const localY =
-          y + (Math.random() - 0.5) * radius * 1.2;
+          y +
+          (Math.random() - 0.5) *
+          radius *
+          1.8;
 
-        horizontalTear(localX, localY, radius, speed);
-        rgbSplit(localX, localY, radius, speed);
-        pixelBlocks(localX, localY, radius, speed);
+
+        horizontalTear(
+          localX,
+          localY,
+          radius,
+          speed
+        );
+
+
+        rgbSplit(
+          localX,
+          localY,
+          radius,
+          speed
+        );
+
+
+        pixelBlocks(
+          localX,
+          localY,
+          radius,
+          speed
+        );
+
+
+        colorSlices(
+          localX,
+          localY,
+          radius,
+          speed
+        );
+
+
+        verticalGlitch(
+          localX,
+          localY,
+          radius,
+          speed
+        );
+
       }
+
     }
 
-    function horizontalTear(x, y, radius, speed) {
-      const slices = 20 + Math.floor(Math.random() * 35);
 
-      for (let i = 0; i < slices; i++) {
+    /* =========================================================
+       HORIZONTAL TEARING
+       Moves thin horizontal strips left and right
+    ========================================================= */
 
-        const h = 2 + Math.random() * 22;
-        const w = radius * (0.4 + Math.random() * 1.4);
+    function horizontalTear(
+      x,
+      y,
+      radius,
+      speed
+    ) {
 
-        const sx = x - w / 2;
+      const slices =
+        45 +
+        Math.floor(
+          Math.random() * 80
+        );
+
+
+      for (
+        let i = 0;
+        i < slices;
+        i++
+      ) {
+
+        const h =
+          1 +
+          Math.random() * 35;
+
+
+        const w =
+          radius *
+          (
+            0.3 +
+            Math.random() * 2
+          );
+
+
+        const sx =
+          x - w / 2;
+
+
         const sy =
           y -
           radius / 2 +
           Math.random() * radius;
 
+
         const shift =
           (Math.random() - 0.5) *
-          (120 + speed * 8);
+          (
+            320 +
+            speed *
+            18 *
+            GLITCH_POWER
+          );
+
 
         ctx.globalAlpha =
-          0.35 + Math.random() * 0.65;
+          0.35 +
+          Math.random() * 0.65;
+
 
         ctx.drawImage(
+
           buffer,
+
           sx,
           sy,
           w,
           h,
 
           sx + shift,
-          sy + (Math.random() - 0.5) * 15,
-          w,
+
+          sy +
+          (Math.random() - 0.5) *
+          35,
+
+          w *
+          (
+            0.6 +
+            Math.random() *
+            1.8
+          ),
+
           h
+
         );
+
       }
 
+
       ctx.globalAlpha = 1;
+
     }
 
-    function rgbSplit(x, y, radius, speed) {
-      const pieces = 12 + Math.floor(Math.random() * 18);
 
-      for (let i = 0; i < pieces; i++) {
+    /* =========================================================
+       RGB COLOR SPLIT
+       Separates image into red, cyan and magenta layers
+    ========================================================= */
 
-        const w = 30 + Math.random() * radius * 0.8;
-        const h = 5 + Math.random() * 60;
+    function rgbSplit(
+      x,
+      y,
+      radius,
+      speed
+    ) {
+
+      const pieces =
+        30 +
+        Math.floor(
+          Math.random() * 45
+        );
+
+
+      for (
+        let i = 0;
+        i < pieces;
+        i++
+      ) {
+
+        const w =
+          20 +
+          Math.random() *
+          radius;
+
+
+        const h =
+          2 +
+          Math.random() *
+          100;
+
 
         const sx =
           x -
           radius / 2 +
-          Math.random() * radius;
+          Math.random() *
+          radius;
+
 
         const sy =
           y -
           radius / 2 +
-          Math.random() * radius;
+          Math.random() *
+          radius;
+
 
         const shift =
-          20 + Math.random() * (80 + speed * 5);
+          35 +
+          Math.random() *
+          (
+            180 +
+            speed *
+            12 *
+            GLITCH_POWER
+          );
 
-        // RED
-        ctx.globalCompositeOperation = "screen";
-        ctx.globalAlpha = 0.8;
+
+        /* RED CHANNEL */
+
+        ctx.globalCompositeOperation =
+          "screen";
+
+        ctx.globalAlpha =
+          0.6 +
+          Math.random() * 0.4;
+
         ctx.filter =
-          "sepia(1) saturate(8) hue-rotate(-35deg) contrast(2)";
+          "sepia(1) saturate(15) hue-rotate(-35deg) contrast(3)";
+
 
         ctx.drawImage(
+
           buffer,
+
           sx,
           sy,
           w,
           h,
+
           sx + shift,
           sy,
+
           w,
           h
+
         );
 
-        // CYAN / BLUE
-        ctx.globalAlpha = 0.75;
+
+        /* CYAN CHANNEL */
+
+        ctx.globalAlpha =
+          0.55 +
+          Math.random() * 0.4;
+
         ctx.filter =
-          "sepia(1) saturate(10) hue-rotate(150deg) contrast(2)";
+          "sepia(1) saturate(15) hue-rotate(150deg) contrast(3)";
+
 
         ctx.drawImage(
+
           buffer,
+
           sx,
           sy,
           w,
           h,
+
           sx - shift,
-          sy + Math.random() * 8,
+
+          sy +
+          (Math.random() - 0.5) *
+          20,
+
           w,
           h
+
         );
 
-        // MAGENTA
-        if (Math.random() > 0.4) {
-          ctx.globalAlpha = 0.65;
+
+        /* MAGENTA CHANNEL */
+
+        if (Math.random() > 0.15) {
+
+          ctx.globalAlpha =
+            0.5 +
+            Math.random() * 0.45;
+
           ctx.filter =
-            "sepia(1) saturate(12) hue-rotate(280deg) contrast(2.3)";
+            "sepia(1) saturate(18) hue-rotate(280deg) contrast(3.5)";
+
 
           ctx.drawImage(
+
             buffer,
+
             sx,
             sy,
             w,
             h,
-            sx + shift * 0.4,
-            sy - Math.random() * 10,
+
+            sx +
+            shift *
+            (
+              0.3 +
+              Math.random()
+            ),
+
+            sy -
+            Math.random() *
+            25,
+
             w,
             h
+
           );
+
         }
+
       }
 
+
       ctx.filter = "none";
-      ctx.globalCompositeOperation = "source-over";
+
+      ctx.globalCompositeOperation =
+        "source-over";
+
       ctx.globalAlpha = 1;
+
     }
 
-    function pixelBlocks(x, y, radius, speed) {
-      const count =
-        15 + Math.floor(Math.random() * 25);
 
-      for (let i = 0; i < count; i++) {
+    /* =========================================================
+       PIXEL BLOCK DISTORTION
+       Creates stretched rectangular fragments of the image
+    ========================================================= */
+
+    function pixelBlocks(
+      x,
+      y,
+      radius,
+      speed
+    ) {
+
+      const count =
+        40 +
+        Math.floor(
+          Math.random() * 70
+        );
+
+
+      for (
+        let i = 0;
+        i < count;
+        i++
+      ) {
 
         const w =
-          10 + Math.random() * radius * 0.5;
+          5 +
+          Math.random() *
+          radius *
+          0.7;
+
 
         const h =
-          3 + Math.random() * 45;
+          2 +
+          Math.random() *
+          65;
+
 
         const sx =
           x -
           radius / 2 +
-          Math.random() * radius;
+          Math.random() *
+          radius;
+
 
         const sy =
           y -
           radius / 2 +
-          Math.random() * radius;
+          Math.random() *
+          radius;
+
 
         const offset =
           (Math.random() - 0.5) *
-          (180 + speed * 10);
+          (
+            400 +
+            speed *
+            20 *
+            GLITCH_POWER
+          );
+
 
         ctx.globalAlpha =
-          0.45 + Math.random() * 0.55;
+          0.35 +
+          Math.random() *
+          0.65;
+
 
         ctx.drawImage(
+
           buffer,
+
           sx,
           sy,
           w,
           h,
 
           sx + offset,
-          sy + (Math.random() - 0.5) * 30,
-          w * (0.7 + Math.random() * 1.8),
+
+          sy +
+          (Math.random() - 0.5) *
+          70,
+
+          w *
+          (
+            0.4 +
+            Math.random() *
+            3
+          ),
+
           h
+
         );
 
-        // occasional sharp color blocks
-        if (Math.random() > 0.65) {
-
-          const colors = [
-            "#ff003c",
-            "#00fff7",
-            "#ff00d4",
-            "#d7ff00",
-            "#4d00ff"
-          ];
-
-          ctx.globalAlpha = 0.25 + Math.random() * 0.45;
-          ctx.fillStyle =
-            colors[Math.floor(Math.random() * colors.length)];
-
-          ctx.fillRect(
-            sx + offset,
-            sy,
-            w * Math.random(),
-            h * (0.5 + Math.random() * 2)
-          );
-        }
       }
 
+
       ctx.globalAlpha = 1;
+
     }
+
+
+    /* =========================================================
+       SHARP COLOR BLOCKS
+       Adds bright artificial color interruptions
+    ========================================================= */
+
+    function colorSlices(
+      x,
+      y,
+      radius,
+      speed
+    ) {
+
+      const count =
+        20 +
+        Math.floor(
+          Math.random() * 45
+        );
+
+
+      for (
+        let i = 0;
+        i < count;
+        i++
+      ) {
+
+        const color =
+          glitchColors[
+            Math.floor(
+              Math.random() *
+              glitchColors.length
+            )
+          ];
+
+
+        const width =
+          10 +
+          Math.random() *
+          radius *
+          0.9;
+
+
+        const height =
+          1 +
+          Math.random() *
+          45;
+
+
+        const px =
+          x +
+          (Math.random() - 0.5) *
+          radius *
+          1.5;
+
+
+        const py =
+          y +
+          (Math.random() - 0.5) *
+          radius *
+          1.5;
+
+
+        ctx.globalAlpha =
+          0.18 +
+          Math.random() *
+          0.75;
+
+
+        ctx.fillStyle = color;
+
+
+        ctx.fillRect(
+
+          px +
+          (Math.random() - 0.5) *
+          speed *
+          5,
+
+          py,
+
+          width,
+
+          height
+
+        );
+
+      }
+
+
+      ctx.globalAlpha = 1;
+
+    }
+
+
+    /* =========================================================
+       VERTICAL GLITCH
+       Adds vertical displacement for less predictable distortion
+    ========================================================= */
+
+    function verticalGlitch(
+      x,
+      y,
+      radius,
+      speed
+    ) {
+
+      const pieces =
+        10 +
+        Math.floor(
+          Math.random() *
+          25
+        );
+
+
+      for (
+        let i = 0;
+        i < pieces;
+        i++
+      ) {
+
+        const w =
+          2 +
+          Math.random() *
+          35;
+
+
+        const h =
+          40 +
+          Math.random() *
+          radius;
+
+
+        const sx =
+          x +
+          (Math.random() - 0.5) *
+          radius;
+
+
+        const sy =
+          y +
+          (Math.random() - 0.5) *
+          radius;
+
+
+        const shiftY =
+          (Math.random() - 0.5) *
+          (
+            250 +
+            speed *
+            15
+          );
+
+
+        ctx.globalAlpha =
+          0.3 +
+          Math.random() *
+          0.7;
+
+
+        ctx.drawImage(
+
+          buffer,
+
+          sx,
+          sy,
+          w,
+          h,
+
+          sx +
+          (Math.random() - 0.5) *
+          50,
+
+          sy + shiftY,
+
+          w,
+          h
+
+        );
+
+      }
+
+
+      ctx.globalAlpha = 1;
+
+    }
+
+
   </script>
 
 </body>
+
 </html>
