@@ -1,10 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Async Art Project</title>
 
   <style>
@@ -14,63 +12,168 @@
       box-sizing: border-box;
     }
 
-    body {
-      width: 100vw;
-      height: 100vh;
+    html, body {
+      width: 100%;
+      height: 100%;
       overflow: hidden;
-      background: #000;
-      cursor: none;
+      background: black;
+      cursor: crosshair;
     }
 
-    #light {
-      position: absolute;
-      width: 180px;
-      height: 180px;
-      border-radius: 50%;
-      background: white;
-      filter: blur(45px);
-      opacity: 0.75;
+    #video {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
 
-      transform: translate(-50%, -50%);
+    #canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
       pointer-events: none;
-
-      left: 50%;
-      top: 50%;
-
-      transition: width 0.3s, height 0.3s;
     }
   </style>
 </head>
 
 <body>
 
-  <div id="light"></div>
+  <video
+    id="video"
+    autoplay
+    muted
+    loop
+    playsinline
+    crossorigin="anonymous"
+  >
+    <source
+      src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
+      type="video/mp4"
+    />
+  </video>
+
+  <canvas id="canvas"></canvas>
 
   <script>
-    const light = document.getElementById("light");
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
 
-    document.addEventListener("mousemove", function(event) {
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
 
-      light.style.left = event.clientX + "px";
-      light.style.top = event.clientY + "px";
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
 
+    // این canvas مخفی فقط برای گرفتن frame ویدیو استفاده می‌شود
+    const buffer = document.createElement("canvas");
+    const bctx = buffer.getContext("2d");
+
+    let lastX = 0;
+    let lastY = 0;
+
+    document.addEventListener("mousemove", (e) => {
+      if (video.readyState < 2) return;
+
+      const x = e.clientX;
+      const y = e.clientY;
+
+      const speed = Math.hypot(x - lastX, y - lastY);
+
+      lastX = x;
+      lastY = y;
+
+      createGlitch(x, y, speed);
     });
 
-    document.addEventListener("mousedown", function() {
+    function createGlitch(x, y, speed) {
+      buffer.width = canvas.width;
+      buffer.height = canvas.height;
 
-      light.style.width = "350px";
-      light.style.height = "350px";
+      // frame فعلی ویدیو را داخل buffer می‌کشیم
+      bctx.drawImage(
+        video,
+        0,
+        0,
+        buffer.width,
+        buffer.height
+      );
 
-    });
+      const size = Math.min(
+        260,
+        Math.max(80, 90 + speed * 2)
+      );
 
-    document.addEventListener("mouseup", function() {
+      const slices = 10;
 
-      light.style.width = "180px";
-      light.style.height = "180px";
+      for (let i = 0; i < slices; i++) {
+        const sliceHeight = size / slices;
 
-    });
+        const sx = x - size / 2;
+        const sy = y - size / 2 + i * sliceHeight;
+
+        const shift =
+          (Math.random() - 0.5) *
+          (20 + speed * 2);
+
+        const redShift = shift + Math.random() * 15;
+        const blueShift = shift - Math.random() * 15;
+
+        ctx.globalAlpha = 0.45;
+
+        // red-ish displacement
+        ctx.drawImage(
+          buffer,
+          sx,
+          sy,
+          size,
+          sliceHeight,
+          sx + redShift,
+          sy,
+          size,
+          sliceHeight
+        );
+
+        // second displaced layer
+        ctx.globalAlpha = 0.3;
+
+        ctx.drawImage(
+          buffer,
+          sx,
+          sy,
+          size,
+          sliceHeight,
+          sx + blueShift,
+          sy + Math.random() * 5,
+          size,
+          sliceHeight
+        );
+
+        // random horizontal cut
+        if (Math.random() > 0.5) {
+          ctx.globalAlpha = 0.7;
+
+          ctx.drawImage(
+            buffer,
+            sx,
+            sy,
+            size,
+            sliceHeight,
+            sx + shift * 2,
+            sy,
+            size,
+            sliceHeight
+          );
+        }
+      }
+
+      ctx.globalAlpha = 1;
+    }
   </script>
 
 </body>
-
 </html>
