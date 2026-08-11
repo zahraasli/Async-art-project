@@ -3,12 +3,12 @@
 
 <head>
 
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
 
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1.0"
-  />
+  >
 
   <title>Async Art Project</title>
 
@@ -29,35 +29,26 @@
 
     /* =========================================================
        PAGE BACKGROUND
-       Background behind all video layers
     ========================================================= */
 
     html,
     body {
       width: 100%;
       height: 100%;
-
       overflow: hidden;
-
-      background: #000000;
-
+      background: black;
       cursor: crosshair;
-
-      font-family:
-        Arial,
-        Helvetica,
-        sans-serif;
+      font-family: Arial, Helvetica, sans-serif;
     }
 
 
     /* =========================================================
        MAIN FOOTAGE
-       This is the dominant background video
+       This remains the dominant image
     ========================================================= */
 
     #footage {
       position: fixed;
-
       inset: 0;
 
       width: 100%;
@@ -71,12 +62,11 @@
 
     /* =========================================================
        WEBCAM OVERLAY
-       Live webcam appears ON TOP of the main footage
+       Webcam appears over the main footage
     ========================================================= */
 
     #webcam {
       position: fixed;
-
       inset: 0;
 
       width: 100%;
@@ -84,38 +74,35 @@
 
       object-fit: cover;
 
-      z-index: 2;
-
       opacity: 0;
 
       mix-blend-mode: screen;
 
+      z-index: 2;
+
       pointer-events: none;
 
-      transition: opacity 1.2s ease;
+      transition: opacity 1s ease;
     }
 
 
     /* =========================================================
-       ACTIVE WEBCAM
-       Controls how visible the webcam is over the footage
+       WEBCAM VISIBILITY
+       Lower value = footage stays more dominant
     ========================================================= */
 
     #webcam.active {
-
-      opacity: 0.42;
-
+      opacity: 0.28;
     }
 
 
     /* =========================================================
-       GLITCH CANVAS
-       All interactive glitch fragments are drawn here
+       DATAMOSH CANVAS
+       Temporal glitch is displayed here
     ========================================================= */
 
-    #glitchCanvas {
+    #moshCanvas {
       position: fixed;
-
       inset: 0;
 
       width: 100%;
@@ -128,33 +115,30 @@
 
 
     /* =========================================================
-       CAMERA / MICROPHONE BUTTON
-       Activates webcam and microphone
+       CAMERA + MICROPHONE BUTTON
     ========================================================= */
 
     #startButton {
       position: fixed;
 
-      top: 20px;
-      left: 20px;
+      top: 16px;
+      left: 16px;
 
       z-index: 10;
 
       padding: 10px 15px;
 
-      border: 1px solid rgba(255,255,255,0.85);
+      border: 1px solid white;
 
-      background: rgba(0,0,0,0.55);
+      background: rgba(0, 0, 0, 0.65);
 
       color: white;
 
       font-size: 11px;
 
-      letter-spacing: 1.5px;
+      letter-spacing: 1.4px;
 
       cursor: pointer;
-
-      backdrop-filter: blur(4px);
     }
 
 
@@ -163,24 +147,10 @@
     ========================================================= */
 
     #startButton:hover {
-
       background: white;
-
       color: black;
-
     }
 
-
-    /* =========================================================
-       HIDE ACTIVE BUTTON
-       Remove this section if you want the button to stay visible
-    ========================================================= */
-
-    #startButton.active {
-
-      opacity: 0.35;
-
-    }
 
   </style>
 
@@ -192,7 +162,7 @@
 
   <!-- =========================================================
        MAIN FOOTAGE
-       Replace this URL later with your own footage
+       Replace this source with your own footage later
   ========================================================== -->
 
   <video
@@ -207,14 +177,13 @@
     <source
       src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
       type="video/mp4"
-    />
+    >
 
   </video>
 
 
   <!-- =========================================================
-       LIVE WEBCAM LAYER
-       Webcam remains separate from the footage
+       LIVE WEBCAM
   ========================================================== -->
 
   <video
@@ -226,21 +195,19 @@
 
 
   <!-- =========================================================
-       CAMERA + AUDIO ACTIVATION
+       CAMERA + MICROPHONE CONTROL
   ========================================================== -->
 
   <button id="startButton">
-
     ENABLE CAMERA + SOUND
-
   </button>
 
 
   <!-- =========================================================
-       GLITCH EFFECT CANVAS
+       DATAMOSH OUTPUT
   ========================================================== -->
 
-  <canvas id="glitchCanvas"></canvas>
+  <canvas id="moshCanvas"></canvas>
 
 
   <script>
@@ -257,7 +224,7 @@
       document.getElementById("webcam");
 
     const canvas =
-      document.getElementById("glitchCanvas");
+      document.getElementById("moshCanvas");
 
     const ctx =
       canvas.getContext("2d");
@@ -267,15 +234,28 @@
 
 
     /* =========================================================
-       HIDDEN COMPOSITE BUFFER
-       Combines footage + webcam before creating glitches
+       CURRENT FRAME BUFFER
+       Stores the current footage + webcam frame
     ========================================================= */
 
-    const buffer =
+    const frameCanvas =
       document.createElement("canvas");
 
-    const bctx =
-      buffer.getContext("2d");
+    const frameCtx =
+      frameCanvas.getContext("2d");
+
+
+    /* =========================================================
+       TEMPORAL FEEDBACK BUFFER
+       Stores previous corrupted frames
+       This creates the datamosh-like persistence
+    ========================================================= */
+
+    const feedbackCanvas =
+      document.createElement("canvas");
+
+    const feedbackCtx =
+      feedbackCanvas.getContext("2d");
 
 
     /* =========================================================
@@ -288,99 +268,123 @@
     let mouseY =
       window.innerHeight / 2;
 
-    let previousX = mouseX;
+    let previousX =
+      mouseX;
 
-    let previousY = mouseY;
+    let previousY =
+      mouseY;
 
     let mouseSpeed = 0;
+
+    let mouseActive = false;
 
 
     /* =========================================================
        AUDIO VALUES
-       Audio level ranges approximately from 0 to 1
     ========================================================= */
-
-    let audioLevel = 0;
 
     let analyser = null;
 
-    let audioData = null;
+    let frequencyData = null;
+
+    let audioLevel = 0;
 
 
     /* =========================================================
-       GLITCH AREA SIZE
-       Smaller values keep distortion close to the cursor
+       DATAMOSH AREA SIZE
+       Keep these values small for a local mouse effect
     ========================================================= */
 
-    const MIN_GLITCH_RADIUS = 45;
+    const MIN_RADIUS = 28;
 
-    const MAX_GLITCH_RADIUS = 125;
+    const MAX_RADIUS = 72;
 
 
     /* =========================================================
-       GLITCH DENSITY
-       Controls the amount of tiny fragments
+       DATAMOSH INTENSITY
+       Higher value = stronger displacement
     ========================================================= */
 
-    const BASE_FRAGMENT_COUNT = 8;
-
-    const MAX_FRAGMENT_COUNT = 45;
+    const MOSH_STRENGTH = 1.25;
 
 
     /* =========================================================
-       SHARP GLITCH COLORS
-       Bright digital colors used in random fragments
+       TEMPORAL PERSISTENCE
+       Higher value keeps old frames visible longer
+
+       Recommended range:
+       0.90 = short
+       0.95 = medium
+       0.98 = long
     ========================================================= */
 
-    const glitchColors = [
+    const FRAME_PERSISTENCE = 0.965;
 
-      "#ff003c",
 
-      "#ff1744",
+    /* =========================================================
+       COLOR BLEED COLORS
+       Sharp colors used very occasionally
+    ========================================================= */
 
-      "#ff5e00",
-
-      "#ffe600",
-
-      "#baff00",
-
-      "#00ff66",
-
-      "#00fff0",
-
-      "#00b7ff",
-
-      "#004cff",
-
+    const sharpColors = [
+      "#ff004c",
+      "#ff2800",
+      "#ff00b7",
       "#6a00ff",
-
-      "#b000ff",
-
-      "#ff00d4",
-
-      "#ff0077"
-
+      "#003cff",
+      "#00eaff",
+      "#00ff72",
+      "#d9ff00"
     ];
 
 
     /* =========================================================
+       RANDOM NUMBER HELPER
+    ========================================================= */
+
+    function random(min, max) {
+
+      return (
+        min +
+        Math.random() *
+        (max - min)
+      );
+
+    }
+
+
+    /* =========================================================
        CANVAS RESIZE
-       Keeps internal canvas resolution matched to the window
     ========================================================= */
 
     function resizeCanvas() {
 
-      canvas.width =
+      const width =
         window.innerWidth;
+
+      const height =
+        window.innerHeight;
+
+
+      canvas.width =
+        width;
 
       canvas.height =
-        window.innerHeight;
+        height;
 
-      buffer.width =
-        window.innerWidth;
 
-      buffer.height =
-        window.innerHeight;
+      frameCanvas.width =
+        width;
+
+      frameCanvas.height =
+        height;
+
+
+      feedbackCanvas.width =
+        width;
+
+      feedbackCanvas.height =
+        height;
 
     }
 
@@ -395,8 +399,185 @@
 
 
     /* =========================================================
+       VIDEO COVER DRAWING
+       Draws video like CSS object-fit: cover
+       without stretching the image
+    ========================================================= */
+
+    function drawVideoCover(
+      context,
+      video,
+      width,
+      height
+    ) {
+
+      if (
+        video.readyState < 2 ||
+        !video.videoWidth ||
+        !video.videoHeight
+      ) {
+        return;
+      }
+
+
+      const videoRatio =
+        video.videoWidth /
+        video.videoHeight;
+
+
+      const canvasRatio =
+        width /
+        height;
+
+
+      let sourceWidth;
+
+      let sourceHeight;
+
+      let sourceX;
+
+      let sourceY;
+
+
+      if (
+        videoRatio >
+        canvasRatio
+      ) {
+
+        sourceHeight =
+          video.videoHeight;
+
+        sourceWidth =
+          sourceHeight *
+          canvasRatio;
+
+        sourceX =
+          (
+            video.videoWidth -
+            sourceWidth
+          ) / 2;
+
+        sourceY = 0;
+
+      }
+
+      else {
+
+        sourceWidth =
+          video.videoWidth;
+
+        sourceHeight =
+          sourceWidth /
+          canvasRatio;
+
+        sourceX = 0;
+
+        sourceY =
+          (
+            video.videoHeight -
+            sourceHeight
+          ) / 2;
+
+      }
+
+
+      context.drawImage(
+
+        video,
+
+        sourceX,
+        sourceY,
+
+        sourceWidth,
+        sourceHeight,
+
+        0,
+        0,
+
+        width,
+        height
+
+      );
+
+    }
+
+
+    /* =========================================================
+       CURRENT FRAME CAPTURE
+       Combines footage and webcam into one source frame
+    ========================================================= */
+
+    function captureCurrentFrame() {
+
+      frameCtx.clearRect(
+        0,
+        0,
+        frameCanvas.width,
+        frameCanvas.height
+      );
+
+
+      /* MAIN FOOTAGE */
+
+      frameCtx.globalAlpha = 1;
+
+      frameCtx.globalCompositeOperation =
+        "source-over";
+
+
+      drawVideoCover(
+
+        frameCtx,
+
+        footage,
+
+        frameCanvas.width,
+
+        frameCanvas.height
+
+      );
+
+
+      /* WEBCAM */
+
+      if (
+        webcam.readyState >= 2 &&
+        webcam.classList.contains("active")
+      ) {
+
+        frameCtx.globalAlpha =
+          0.28;
+
+
+        frameCtx.globalCompositeOperation =
+          "screen";
+
+
+        drawVideoCover(
+
+          frameCtx,
+
+          webcam,
+
+          frameCanvas.width,
+
+          frameCanvas.height
+
+        );
+
+      }
+
+
+      frameCtx.globalAlpha = 1;
+
+      frameCtx.globalCompositeOperation =
+        "source-over";
+
+    }
+
+
+    /* =========================================================
        CAMERA + MICROPHONE ACTIVATION
-       Requests both video and audio permission
     ========================================================= */
 
     startButton.addEventListener(
@@ -418,23 +599,23 @@
 
 
           /* =====================================================
-             WEBCAM STREAM
-             Places webcam over the existing footage
+             WEBCAM ACTIVATION
           ===================================================== */
 
           webcam.srcObject =
             stream;
 
+
           webcam.classList.add(
             "active"
           );
+
 
           await webcam.play();
 
 
           /* =====================================================
-             AUDIO ANALYSIS
-             Uses microphone volume to control glitch behavior
+             MICROPHONE ANALYSIS
           ===================================================== */
 
           const AudioContext =
@@ -444,6 +625,9 @@
 
           const audioContext =
             new AudioContext();
+
+
+          await audioContext.resume();
 
 
           const source =
@@ -456,10 +640,12 @@
             audioContext.createAnalyser();
 
 
-          analyser.fftSize = 256;
+          analyser.fftSize =
+            256;
+
 
           analyser.smoothingTimeConstant =
-            0.65;
+            0.72;
 
 
           source.connect(
@@ -467,7 +653,7 @@
           );
 
 
-          audioData =
+          frequencyData =
             new Uint8Array(
               analyser.frequencyBinCount
             );
@@ -476,17 +662,11 @@
           startButton.textContent =
             "CAMERA + SOUND ACTIVE";
 
-
-          startButton.classList.add(
-            "active"
-          );
-
         }
 
         catch (error) {
 
           console.error(
-            "Camera or microphone access failed:",
             error
           );
 
@@ -502,17 +682,17 @@
 
     /* =========================================================
        AUDIO LEVEL DETECTION
-       Converts microphone input into a normalized value
+       Sound affects datamosh intensity
     ========================================================= */
 
-    function updateAudioLevel() {
+    function updateAudio() {
 
       if (
         !analyser ||
-        !audioData
+        !frequencyData
       ) {
 
-        audioLevel *= 0.92;
+        audioLevel *= 0.94;
 
         return;
 
@@ -520,7 +700,7 @@
 
 
       analyser.getByteFrequencyData(
-        audioData
+        frequencyData
       );
 
 
@@ -529,54 +709,50 @@
 
       for (
         let i = 0;
-        i < audioData.length;
+        i < frequencyData.length;
         i++
       ) {
 
         total +=
-          audioData[i];
+          frequencyData[i];
 
       }
 
 
       const average =
         total /
-        audioData.length;
+        frequencyData.length;
 
 
-      const rawLevel =
-        average / 255;
-
-
-      /* Increase microphone sensitivity */
-
-      const amplifiedLevel =
+      const normalized =
         Math.min(
           1,
-          rawLevel * 4.5
+          average / 255 * 5
         );
 
 
-      /* Smooth audio movement */
-
       audioLevel =
-        audioLevel * 0.68 +
-        amplifiedLevel * 0.32;
+        audioLevel * 0.72 +
+        normalized * 0.28;
 
     }
 
 
     /* =========================================================
        MOUSE TRACKING
-       Mouse affects only a small local area
+       Only a small region around the mouse is affected
     ========================================================= */
 
     window.addEventListener(
       "mousemove",
       (event) => {
 
+        mouseActive = true;
+
+
         mouseX =
           event.clientX;
+
 
         mouseY =
           event.clientY;
@@ -585,6 +761,7 @@
         const dx =
           mouseX -
           previousX;
+
 
         const dy =
           mouseY -
@@ -601,269 +778,78 @@
         previousX =
           mouseX;
 
+
         previousY =
           mouseY;
-
-
-        createMouseGlitch();
 
       }
     );
 
 
     /* =========================================================
-       COMPOSITE FRAME
-       Captures footage first and webcam second
+       TEMPORAL FEEDBACK
+       Keeps fragments of previous frames alive
     ========================================================= */
 
-    function captureCompositeFrame() {
+    function updateFeedback() {
 
-      bctx.clearRect(
-        0,
-        0,
-        buffer.width,
-        buffer.height
+      feedbackCtx.save();
+
+
+      feedbackCtx.globalAlpha =
+        FRAME_PERSISTENCE;
+
+
+      /* Slight random motion creates temporal instability */
+
+      feedbackCtx.drawImage(
+
+        feedbackCanvas,
+
+        random(-1.5, 1.5),
+
+        random(-1, 1),
+
+        feedbackCanvas.width,
+
+        feedbackCanvas.height
+
       );
 
 
-      /* MAIN FOOTAGE */
-
-      if (
-        footage.readyState >= 2
-      ) {
-
-        bctx.globalAlpha = 1;
-
-        bctx.globalCompositeOperation =
-          "source-over";
-
-
-        bctx.drawImage(
-          footage,
-          0,
-          0,
-          buffer.width,
-          buffer.height
-        );
-
-      }
-
-
-      /* WEBCAM OVERLAY */
-
-      if (
-        webcam.readyState >= 2 &&
-        webcam.classList.contains(
-          "active"
-        )
-      ) {
-
-        bctx.globalAlpha =
-          0.42;
-
-        bctx.globalCompositeOperation =
-          "screen";
-
-
-        bctx.drawImage(
-          webcam,
-          0,
-          0,
-          buffer.width,
-          buffer.height
-        );
-
-      }
-
-
-      bctx.globalAlpha = 1;
-
-      bctx.globalCompositeOperation =
-        "source-over";
+      feedbackCtx.restore();
 
     }
 
 
     /* =========================================================
-       RANDOM VALUE HELPER
+       DATAMOSH STRIP
+       Copies previous frame fragments and pushes them sideways
     ========================================================= */
 
-    function random(
-      min,
-      max
-    ) {
-
-      return (
-        min +
-        Math.random() *
-        (max - min)
-      );
-
-    }
-
-
-    /* =========================================================
-       RANDOM COLOR HELPER
-    ========================================================= */
-
-    function randomColor() {
-
-      return glitchColors[
-        Math.floor(
-          Math.random() *
-          glitchColors.length
-        )
-      ];
-
-    }
-
-
-    /* =========================================================
-       LOCAL MOUSE GLITCH
-       Creates small irregular distortion around the cursor
-    ========================================================= */
-
-    function createMouseGlitch() {
-
-      if (
-        footage.readyState < 2
-      ) {
-        return;
-      }
-
-
-      captureCompositeFrame();
-
-
-      const speedInfluence =
-        Math.min(
-          mouseSpeed,
-          30
-        );
-
-
-      const radius =
-        Math.min(
-          MAX_GLITCH_RADIUS,
-
-          MIN_GLITCH_RADIUS +
-          speedInfluence * 1.5 +
-          audioLevel * 35
-        );
-
-
-      const count =
-        Math.floor(
-
-          BASE_FRAGMENT_COUNT +
-
-          Math.random() * 14 +
-
-          audioLevel * 18
-
-        );
-
-
-      for (
-        let i = 0;
-        i < count;
-        i++
-      ) {
-
-        const chance =
-          Math.random();
-
-
-        if (
-          chance < 0.34
-        ) {
-
-          microHorizontalGlitch(
-            mouseX,
-            mouseY,
-            radius
-          );
-
-        }
-
-        else if (
-          chance < 0.60
-        ) {
-
-          microPixelGlitch(
-            mouseX,
-            mouseY,
-            radius
-          );
-
-        }
-
-        else if (
-          chance < 0.78
-        ) {
-
-          microRGBGlitch(
-            mouseX,
-            mouseY,
-            radius
-          );
-
-        }
-
-        else if (
-          chance < 0.92
-        ) {
-
-          microColorGlitch(
-            mouseX,
-            mouseY,
-            radius
-          );
-
-        }
-
-        else {
-
-          microNoiseGlitch(
-            mouseX,
-            mouseY,
-            radius
-          );
-
-        }
-
-      }
-
-    }
-
-
-    /* =========================================================
-       MICRO HORIZONTAL GLITCH
-       Tiny horizontal fragments with irregular displacement
-    ========================================================= */
-
-    function microHorizontalGlitch(
-      x,
-      y,
-      radius
+    function moshStrip(
+      centerX,
+      centerY,
+      radius,
+      strength
     ) {
 
       const width =
         random(
-          8,
-          75
+          12,
+          radius * 1.25
         );
 
 
       const height =
         random(
-          1,
-          5
+          2,
+          11
         );
 
 
       const sourceX =
-        x +
+        centerX +
         random(
           -radius,
           radius
@@ -871,34 +857,31 @@
 
 
       const sourceY =
-        y +
+        centerY +
         random(
           -radius,
           radius
         );
 
 
-      const offset =
+      const displacement =
         random(
-          -45,
-          45
+          -25,
+          25
         ) *
-        (
-          0.7 +
-          audioLevel * 2.5
-        );
+        strength;
 
 
       ctx.globalAlpha =
         random(
-          0.35,
-          0.9
+          0.45,
+          0.92
         );
 
 
       ctx.drawImage(
 
-        buffer,
+        feedbackCanvas,
 
         sourceX,
         sourceY,
@@ -906,18 +889,16 @@
         width,
         height,
 
-        sourceX + offset,
+        sourceX +
+        displacement,
 
         sourceY +
-        random(
-          -5,
-          5
-        ),
+        random(-3, 3),
 
         width *
         random(
-          0.6,
-          1.7
+          0.85,
+          1.45
         ),
 
         height
@@ -931,32 +912,33 @@
 
 
     /* =========================================================
-       MICRO PIXEL GLITCH
-       Very small rectangular fragments
+       DATAMOSH SMEAR
+       Stretches old image information across nearby pixels
     ========================================================= */
 
-    function microPixelGlitch(
-      x,
-      y,
-      radius
+    function moshSmear(
+      centerX,
+      centerY,
+      radius,
+      strength
     ) {
 
-      const width =
+      const sourceWidth =
         random(
-          2,
-          22
+          3,
+          18
         );
 
 
-      const height =
+      const sourceHeight =
         random(
-          1,
-          13
+          8,
+          45
         );
 
 
       const sourceX =
-        x +
+        centerX +
         random(
           -radius,
           radius
@@ -964,65 +946,53 @@
 
 
       const sourceY =
-        y +
+        centerY +
         random(
           -radius,
           radius
         );
 
 
-      const offsetX =
+      const destinationWidth =
+        sourceWidth *
         random(
-          -32,
-          32
-        ) *
-        (
-          1 +
-          audioLevel * 2
-        );
-
-
-      const offsetY =
-        random(
-          -15,
-          15
+          1.2,
+          4
         );
 
 
       ctx.globalAlpha =
         random(
           0.35,
-          1
+          0.78
         );
 
 
       ctx.drawImage(
 
-        buffer,
+        feedbackCanvas,
 
         sourceX,
         sourceY,
 
-        width,
-        height,
+        sourceWidth,
+        sourceHeight,
 
         sourceX +
-        offsetX,
+        random(
+          -18,
+          18
+        ) *
+        strength,
 
         sourceY +
-        offsetY,
-
-        width *
         random(
-          0.5,
-          2.4
+          -7,
+          7
         ),
 
-        height *
-        random(
-          0.6,
-          1.6
-        )
+        destinationWidth,
+        sourceHeight
 
       );
 
@@ -1033,32 +1003,26 @@
 
 
     /* =========================================================
-       MICRO RGB SPLIT
-       Small sharp red / cyan / magenta separations
+       MOTION ECHO
+       Repeats fragments from previous frames
     ========================================================= */
 
-    function microRGBGlitch(
-      x,
-      y,
-      radius
+    function motionEcho(
+      centerX,
+      centerY,
+      radius,
+      strength
     ) {
 
-      const width =
+      const size =
         random(
-          5,
-          45
-        );
-
-
-      const height =
-        random(
-          1,
-          9
+          8,
+          28
         );
 
 
       const sourceX =
-        x +
+        centerX +
         random(
           -radius,
           radius
@@ -1066,21 +1030,112 @@
 
 
       const sourceY =
-        y +
+        centerY +
         random(
           -radius,
           radius
         );
 
 
-      const shift =
+      const repeats =
+        Math.floor(
+          random(
+            2,
+            5
+          )
+        );
+
+
+      for (
+        let i = 0;
+        i < repeats;
+        i++
+      ) {
+
+        ctx.globalAlpha =
+          0.28 /
+          (
+            i + 1
+          );
+
+
+        ctx.drawImage(
+
+          feedbackCanvas,
+
+          sourceX,
+          sourceY,
+
+          size,
+          size,
+
+          sourceX +
+          i *
+          random(
+            -8,
+            8
+          ) *
+          strength,
+
+          sourceY +
+          i *
+          random(
+            -4,
+            4
+          ),
+
+          size,
+          size
+
+        );
+
+      }
+
+
+      ctx.globalAlpha = 1;
+
+    }
+
+
+    /* =========================================================
+       CHROMA BLEED
+       Creates subtle codec-like color separation
+    ========================================================= */
+
+    function chromaBleed(
+      centerX,
+      centerY,
+      radius,
+      strength
+    ) {
+
+      const width =
         random(
-          4,
-          18
-        ) *
-        (
-          1 +
-          audioLevel * 2.5
+          8,
+          35
+        );
+
+
+      const height =
+        random(
+          2,
+          10
+        );
+
+
+      const x =
+        centerX +
+        random(
+          -radius,
+          radius
+        );
+
+
+      const y =
+        centerY +
+        random(
+          -radius,
+          radius
         );
 
 
@@ -1088,33 +1143,35 @@
         "screen";
 
 
-      /* RED */
+      ctx.filter =
+        "sepia(1) saturate(10) hue-rotate(155deg)";
+
 
       ctx.globalAlpha =
         random(
-          0.45,
-          0.9
+          0.15,
+          0.38
         );
-
-
-      ctx.filter =
-        "sepia(1) saturate(18) hue-rotate(-35deg) contrast(3)";
 
 
       ctx.drawImage(
 
-        buffer,
+        feedbackCanvas,
 
-        sourceX,
-        sourceY,
+        x,
+        y,
 
         width,
         height,
 
-        sourceX +
-        shift,
+        x -
+        random(
+          2,
+          10
+        ) *
+        strength,
 
-        sourceY,
+        y,
 
         width,
         height
@@ -1122,89 +1179,33 @@
       );
 
 
-      /* CYAN */
-
-      ctx.globalAlpha =
-        random(
-          0.4,
-          0.85
-        );
-
-
       ctx.filter =
-        "sepia(1) saturate(18) hue-rotate(145deg) contrast(3.4)";
+        "sepia(1) saturate(12) hue-rotate(290deg)";
 
 
       ctx.drawImage(
 
-        buffer,
+        feedbackCanvas,
 
-        sourceX,
-        sourceY,
+        x,
+        y,
 
         width,
         height,
 
-        sourceX -
-        shift,
-
-        sourceY +
+        x +
         random(
-          -2,
-          2
-        ),
+          2,
+          10
+        ) *
+        strength,
+
+        y,
 
         width,
         height
 
       );
-
-
-      /* MAGENTA — RANDOM OCCURRENCE */
-
-      if (
-        Math.random() > 0.5
-      ) {
-
-        ctx.globalAlpha =
-          random(
-            0.35,
-            0.75
-          );
-
-
-        ctx.filter =
-          "sepia(1) saturate(20) hue-rotate(280deg) contrast(3.8)";
-
-
-        ctx.drawImage(
-
-          buffer,
-
-          sourceX,
-          sourceY,
-
-          width,
-          height,
-
-          sourceX +
-          random(
-            -10,
-            10
-          ),
-
-          sourceY +
-          random(
-            -4,
-            4
-          ),
-
-          width,
-          height
-
-        );
-
-      }
 
 
       ctx.filter =
@@ -1221,66 +1222,70 @@
 
 
     /* =========================================================
-       MICRO SHARP COLOR GLITCH
-       Tiny saturated color interruptions
+       RARE SHARP COLOR ARTIFACT
+       Color appears only occasionally
+       This prevents the image from becoming too graphic
     ========================================================= */
 
-    function microColorGlitch(
-      x,
-      y,
+    function rareColorArtifact(
+      centerX,
+      centerY,
       radius
     ) {
 
-      const px =
-        x +
+      if (
+        Math.random() > 0.14
+      ) {
+        return;
+      }
+
+
+      const x =
+        centerX +
         random(
           -radius,
           radius
         );
 
 
-      const py =
-        y +
+      const y =
+        centerY +
         random(
           -radius,
           radius
-        );
-
-
-      const width =
-        random(
-          2,
-          35
-        );
-
-
-      const height =
-        random(
-          1,
-          8
         );
 
 
       ctx.fillStyle =
-        randomColor();
+        sharpColors[
+          Math.floor(
+            Math.random() *
+            sharpColors.length
+          )
+        ];
 
 
       ctx.globalAlpha =
         random(
-          0.25,
-          0.85
+          0.2,
+          0.48
         );
 
 
       ctx.fillRect(
 
-        px,
+        x,
+        y,
 
-        py,
+        random(
+          4,
+          22
+        ),
 
-        width,
-
-        height
+        random(
+          1,
+          5
+        )
 
       );
 
@@ -1291,118 +1296,148 @@
 
 
     /* =========================================================
-       MICRO DIGITAL NOISE
-       Tiny single-pixel and micro-block interruptions
+       LOCAL DATAMOSH GENERATOR
+       Main mouse-controlled distortion
     ========================================================= */
 
-    function microNoiseGlitch(
-      x,
-      y,
-      radius
-    ) {
+    function createLocalMosh() {
 
-      const amount =
+      if (
+        !mouseActive
+      ) {
+        return;
+      }
+
+
+      const speed =
+        Math.min(
+          mouseSpeed,
+          25
+        );
+
+
+      const radius =
+        Math.min(
+
+          MAX_RADIUS,
+
+          MIN_RADIUS +
+          speed * 0.8
+
+        );
+
+
+      const strength =
+        MOSH_STRENGTH +
+        speed * 0.025 +
+        audioLevel * 1.8;
+
+
+      const fragmentCount =
         Math.floor(
-          random(
-            3,
-            12
-          )
+
+          5 +
+
+          Math.random() * 8 +
+
+          speed * 0.15 +
+
+          audioLevel * 10
+
         );
 
 
       for (
         let i = 0;
-        i < amount;
+        i < fragmentCount;
         i++
       ) {
 
-        const px =
-          x +
-          random(
-            -radius,
-            radius
+        const choice =
+          Math.random();
+
+
+        if (
+          choice < 0.38
+        ) {
+
+          moshStrip(
+            mouseX,
+            mouseY,
+            radius,
+            strength
           );
 
+        }
 
-        const py =
-          y +
-          random(
-            -radius,
-            radius
+        else if (
+          choice < 0.67
+        ) {
+
+          moshSmear(
+            mouseX,
+            mouseY,
+            radius,
+            strength
           );
 
+        }
 
-        const size =
-          random(
-            1,
-            4
+        else if (
+          choice < 0.85
+        ) {
+
+          motionEcho(
+            mouseX,
+            mouseY,
+            radius,
+            strength
           );
 
+        }
 
-        ctx.fillStyle =
-          Math.random() > 0.35
-            ? randomColor()
-            : "#ffffff";
+        else {
 
-
-        ctx.globalAlpha =
-          random(
-            0.25,
-            0.9
+          chromaBleed(
+            mouseX,
+            mouseY,
+            radius,
+            strength
           );
 
+        }
 
-        ctx.fillRect(
 
-          px,
-
-          py,
-
-          size *
-          random(
-            1,
-            5
-          ),
-
-          size
-
+        rareColorArtifact(
+          mouseX,
+          mouseY,
+          radius
         );
 
       }
 
 
-      ctx.globalAlpha = 1;
+      mouseSpeed *= 0.82;
 
     }
 
 
     /* =========================================================
-       SOUND-REACTIVE RANDOM GLITCH
-       Creates distortion in unpredictable screen locations
-       even when the mouse is not moving
+       SOUND-REACTIVE MOSH
+       Sound creates occasional small temporal ruptures
     ========================================================= */
 
-    function createAudioGlitch() {
+    function createSoundMosh() {
 
       if (
-        footage.readyState < 2
+        audioLevel < 0.06
       ) {
         return;
       }
 
-
-      if (
-        audioLevel < 0.045
-      ) {
-        return;
-      }
-
-
-      /* Higher sound = higher probability */
 
       const probability =
-        0.08 +
-        audioLevel * 0.72;
+        audioLevel * 0.22;
 
 
       if (
@@ -1411,143 +1446,6 @@
       ) {
         return;
       }
-
-
-      captureCompositeFrame();
-
-
-      const centerX =
-        random(
-          0,
-          canvas.width
-        );
-
-
-      const centerY =
-        random(
-          0,
-          canvas.height
-        );
-
-
-      const radius =
-        random(
-          20,
-          65 +
-          audioLevel * 80
-        );
-
-
-      const count =
-        Math.floor(
-
-          2 +
-
-          Math.random() *
-          (
-            5 +
-            audioLevel *
-            MAX_FRAGMENT_COUNT
-          )
-
-        );
-
-
-      for (
-        let i = 0;
-        i < count;
-        i++
-      ) {
-
-        const type =
-          Math.random();
-
-
-        if (
-          type < 0.28
-        ) {
-
-          microHorizontalGlitch(
-            centerX,
-            centerY,
-            radius
-          );
-
-        }
-
-        else if (
-          type < 0.52
-        ) {
-
-          microPixelGlitch(
-            centerX,
-            centerY,
-            radius
-          );
-
-        }
-
-        else if (
-          type < 0.70
-        ) {
-
-          microRGBGlitch(
-            centerX,
-            centerY,
-            radius
-          );
-
-        }
-
-        else if (
-          type < 0.88
-        ) {
-
-          microColorGlitch(
-            centerX,
-            centerY,
-            radius
-          );
-
-        }
-
-        else {
-
-          microNoiseGlitch(
-            centerX,
-            centerY,
-            radius
-          );
-
-        }
-
-      }
-
-    }
-
-
-    /* =========================================================
-       RARE GLITCH SPIKES
-       Occasional sudden unpredictable digital ruptures
-    ========================================================= */
-
-    function randomSpike() {
-
-      if (
-        Math.random() > 0.018
-      ) {
-        return;
-      }
-
-
-      if (
-        footage.readyState < 2
-      ) {
-        return;
-      }
-
-
-      captureCompositeFrame();
 
 
       const x =
@@ -1564,144 +1462,69 @@
         );
 
 
-      const fragments =
+      const radius =
+        random(
+          18,
+          45
+        );
+
+
+      const strength =
+        1 +
+        audioLevel * 2.5;
+
+
+      const count =
         Math.floor(
           random(
-            4,
-            18
+            2,
+            7
           )
         );
 
 
       for (
         let i = 0;
-        i < fragments;
+        i < count;
         i++
       ) {
 
-        const width =
-          random(
-            4,
-            90
-          );
-
-
-        const height =
-          random(
-            1,
-            6
-          );
-
-
-        const sx =
-          x +
-          random(
-            -80,
-            80
-          );
-
-
-        const sy =
-          y +
-          random(
-            -60,
-            60
-          );
-
-
-        ctx.globalAlpha =
-          random(
-            0.35,
-            0.95
-          );
-
-
-        ctx.drawImage(
-
-          buffer,
-
-          sx,
-          sy,
-
-          width,
-          height,
-
-          sx +
-          random(
-            -100,
-            100
-          ),
-
-          sy +
-          random(
-            -8,
-            8
-          ),
-
-          width *
-          random(
-            0.5,
-            2
-          ),
-
-          height
-
-        );
-
-
         if (
-          Math.random() > 0.55
+          Math.random() > 0.5
         ) {
 
-          ctx.fillStyle =
-            randomColor();
+          moshStrip(
+            x,
+            y,
+            radius,
+            strength
+          );
 
+        }
 
-          ctx.globalAlpha =
-            random(
-              0.2,
-              0.65
-            );
+        else {
 
-
-          ctx.fillRect(
-
-            sx +
-            random(
-              -30,
-              30
-            ),
-
-            sy,
-
-            random(
-              2,
-              30
-            ),
-
-            random(
-              1,
-              4
-            )
-
+          moshSmear(
+            x,
+            y,
+            radius,
+            strength
           );
 
         }
 
       }
 
-
-      ctx.globalAlpha = 1;
-
     }
 
 
     /* =========================================================
-       GLITCH DECAY
-       Slowly removes old glitch fragments from the screen
+       CANVAS DECAY
+       Old distortion slowly disappears
+       instead of permanently covering the footage
     ========================================================= */
 
-    function fadeGlitchCanvas() {
+    function decayCanvas() {
 
       ctx.save();
 
@@ -1711,7 +1534,7 @@
 
 
       ctx.fillStyle =
-        "rgba(0,0,0,0.12)";
+        "rgba(0,0,0,0.065)";
 
 
       ctx.fillRect(
@@ -1728,25 +1551,88 @@
 
 
     /* =========================================================
+       FEEDBACK FRAME UPDATE
+       Saves the current image plus part of the previous frame
+       to create temporal corruption
+    ========================================================= */
+
+    function storeFeedbackFrame() {
+
+      feedbackCtx.save();
+
+
+      feedbackCtx.globalAlpha =
+        0.90;
+
+
+      feedbackCtx.drawImage(
+
+        frameCanvas,
+
+        0,
+        0,
+
+        feedbackCanvas.width,
+        feedbackCanvas.height
+
+      );
+
+
+      feedbackCtx.restore();
+
+
+      /* Add some existing glitch back into memory */
+
+      feedbackCtx.save();
+
+
+      feedbackCtx.globalAlpha =
+        0.25;
+
+
+      feedbackCtx.drawImage(
+
+        canvas,
+
+        0,
+        0,
+
+        feedbackCanvas.width,
+        feedbackCanvas.height
+
+      );
+
+
+      feedbackCtx.restore();
+
+    }
+
+
+    /* =========================================================
        MAIN ANIMATION LOOP
-       Continuously reads audio and creates irregular distortion
     ========================================================= */
 
     function animate() {
 
-      updateAudioLevel();
+      captureCurrentFrame();
 
 
-      fadeGlitchCanvas();
+      updateAudio();
 
 
-      createAudioGlitch();
+      updateFeedback();
 
 
-      randomSpike();
+      decayCanvas();
 
 
-      mouseSpeed *= 0.82;
+      createLocalMosh();
+
+
+      createSoundMosh();
+
+
+      storeFeedbackFrame();
 
 
       requestAnimationFrame(
@@ -1757,7 +1643,7 @@
 
 
     /* =========================================================
-       START ANIMATION
+       START DATAMOSH SYSTEM
     ========================================================= */
 
     animate();
