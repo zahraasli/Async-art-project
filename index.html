@@ -2,9 +2,16 @@
 <html lang="en">
 
 <head>
+
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+
   <title>Async Art Project</title>
+
 
   <style>
 
@@ -22,28 +29,35 @@
 
     /* =========================================================
        PAGE BACKGROUND
-       Change the background color here
+       Background behind all video layers
     ========================================================= */
 
     html,
     body {
       width: 100%;
       height: 100%;
+
       overflow: hidden;
-      background: #0000ff;
+
+      background: #000000;
+
       cursor: crosshair;
-      font-family: Arial, Helvetica, sans-serif;
+
+      font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
     }
 
 
     /* =========================================================
-       VIDEO / WEBCAM FOOTAGE
-       This element displays either the default video
-       or the live webcam
+       MAIN FOOTAGE
+       This is the dominant background video
     ========================================================= */
 
-    #video {
+    #footage {
       position: fixed;
+
       inset: 0;
 
       width: 100%;
@@ -56,29 +70,69 @@
 
 
     /* =========================================================
-       GLITCH CANVAS
-       All glitch effects are drawn on this canvas
+       WEBCAM OVERLAY
+       Live webcam appears ON TOP of the main footage
     ========================================================= */
 
-    #glitchCanvas {
+    #webcam {
       position: fixed;
+
       inset: 0;
 
       width: 100%;
       height: 100%;
 
+      object-fit: cover;
+
       z-index: 2;
+
+      opacity: 0;
+
+      mix-blend-mode: screen;
+
+      pointer-events: none;
+
+      transition: opacity 1.2s ease;
+    }
+
+
+    /* =========================================================
+       ACTIVE WEBCAM
+       Controls how visible the webcam is over the footage
+    ========================================================= */
+
+    #webcam.active {
+
+      opacity: 0.42;
+
+    }
+
+
+    /* =========================================================
+       GLITCH CANVAS
+       All interactive glitch fragments are drawn here
+    ========================================================= */
+
+    #glitchCanvas {
+      position: fixed;
+
+      inset: 0;
+
+      width: 100%;
+      height: 100%;
+
+      z-index: 3;
 
       pointer-events: none;
     }
 
 
     /* =========================================================
-       WEBCAM BUTTON
-       Button used to activate the live camera
+       CAMERA / MICROPHONE BUTTON
+       Activates webcam and microphone
     ========================================================= */
 
-    #webcamButton {
+    #startButton {
       position: fixed;
 
       top: 20px;
@@ -86,31 +140,50 @@
 
       z-index: 10;
 
-      padding: 10px 16px;
+      padding: 10px 15px;
 
-      border: 1px solid white;
+      border: 1px solid rgba(255,255,255,0.85);
 
-      background: rgba(0, 0, 0, 0.65);
+      background: rgba(0,0,0,0.55);
 
       color: white;
 
-      font-size: 12px;
-      letter-spacing: 1px;
+      font-size: 11px;
+
+      letter-spacing: 1.5px;
 
       cursor: pointer;
+
+      backdrop-filter: blur(4px);
     }
 
 
     /* =========================================================
-       WEBCAM BUTTON HOVER
+       BUTTON HOVER
     ========================================================= */
 
-    #webcamButton:hover {
+    #startButton:hover {
+
       background: white;
+
       color: black;
+
+    }
+
+
+    /* =========================================================
+       HIDE ACTIVE BUTTON
+       Remove this section if you want the button to stay visible
+    ========================================================= */
+
+    #startButton.active {
+
+      opacity: 0.35;
+
     }
 
   </style>
+
 </head>
 
 
@@ -118,12 +191,12 @@
 
 
   <!-- =========================================================
-       DEFAULT FOOTAGE
-       Replace this URL later with your own video file
+       MAIN FOOTAGE
+       Replace this URL later with your own footage
   ========================================================== -->
 
   <video
-    id="video"
+    id="footage"
     autoplay
     muted
     loop
@@ -140,11 +213,26 @@
 
 
   <!-- =========================================================
-       WEBCAM CONTROL
+       LIVE WEBCAM LAYER
+       Webcam remains separate from the footage
   ========================================================== -->
 
-  <button id="webcamButton">
-    USE WEBCAM
+  <video
+    id="webcam"
+    autoplay
+    muted
+    playsinline
+  ></video>
+
+
+  <!-- =========================================================
+       CAMERA + AUDIO ACTIVATION
+  ========================================================== -->
+
+  <button id="startButton">
+
+    ENABLE CAMERA + SOUND
+
   </button>
 
 
@@ -157,209 +245,378 @@
 
   <script>
 
+
     /* =========================================================
        HTML ELEMENT REFERENCES
     ========================================================= */
 
-    const video = document.getElementById("video");
+    const footage =
+      document.getElementById("footage");
 
-    const canvas = document.getElementById("glitchCanvas");
+    const webcam =
+      document.getElementById("webcam");
 
-    const ctx = canvas.getContext("2d");
+    const canvas =
+      document.getElementById("glitchCanvas");
 
-    const webcamButton =
-      document.getElementById("webcamButton");
+    const ctx =
+      canvas.getContext("2d");
+
+    const startButton =
+      document.getElementById("startButton");
 
 
     /* =========================================================
-       VIDEO BUFFER
-       Hidden canvas used to capture the current video frame
+       HIDDEN COMPOSITE BUFFER
+       Combines footage + webcam before creating glitches
     ========================================================= */
 
-    const buffer = document.createElement("canvas");
+    const buffer =
+      document.createElement("canvas");
 
-    const bctx = buffer.getContext("2d");
+    const bctx =
+      buffer.getContext("2d");
 
 
     /* =========================================================
        MOUSE POSITION
     ========================================================= */
 
-    let lastX = innerWidth / 2;
+    let mouseX =
+      window.innerWidth / 2;
 
-    let lastY = innerHeight / 2;
+    let mouseY =
+      window.innerHeight / 2;
+
+    let previousX = mouseX;
+
+    let previousY = mouseY;
+
+    let mouseSpeed = 0;
 
 
     /* =========================================================
-       GLITCH INTENSITY SETTINGS
-       Increase these values for even more distortion
+       AUDIO VALUES
+       Audio level ranges approximately from 0 to 1
     ========================================================= */
 
-    const GLITCH_POWER = 2.7;
+    let audioLevel = 0;
 
-    const MAX_RADIUS = 850;
+    let analyser = null;
 
-    const MIN_RADIUS = 250;
+    let audioData = null;
 
-    const BURST_MIN = 16;
 
-    const BURST_RANDOM = 14;
+    /* =========================================================
+       GLITCH AREA SIZE
+       Smaller values keep distortion close to the cursor
+    ========================================================= */
+
+    const MIN_GLITCH_RADIUS = 45;
+
+    const MAX_GLITCH_RADIUS = 125;
+
+
+    /* =========================================================
+       GLITCH DENSITY
+       Controls the amount of tiny fragments
+    ========================================================= */
+
+    const BASE_FRAGMENT_COUNT = 8;
+
+    const MAX_FRAGMENT_COUNT = 45;
 
 
     /* =========================================================
        SHARP GLITCH COLORS
-       Change / add colors here
+       Bright digital colors used in random fragments
     ========================================================= */
 
     const glitchColors = [
+
       "#ff003c",
-      "#ff0000",
+
+      "#ff1744",
+
       "#ff5e00",
-      "#ffff00",
-      "#d7ff00",
+
+      "#ffe600",
+
+      "#baff00",
+
       "#00ff66",
-      "#00fff7",
-      "#00a2ff",
-      "#4d00ff",
-      "#8200ff",
+
+      "#00fff0",
+
+      "#00b7ff",
+
+      "#004cff",
+
+      "#6a00ff",
+
+      "#b000ff",
+
       "#ff00d4",
-      "#ff0088"
+
+      "#ff0077"
+
     ];
 
 
     /* =========================================================
        CANVAS RESIZE
-       Keeps canvases equal to browser size
+       Keeps internal canvas resolution matched to the window
     ========================================================= */
 
-    function resize() {
+    function resizeCanvas() {
 
-      canvas.width = innerWidth;
+      canvas.width =
+        window.innerWidth;
 
-      canvas.height = innerHeight;
+      canvas.height =
+        window.innerHeight;
 
-      buffer.width = innerWidth;
+      buffer.width =
+        window.innerWidth;
 
-      buffer.height = innerHeight;
+      buffer.height =
+        window.innerHeight;
 
     }
 
 
-    resize();
+    resizeCanvas();
 
-    addEventListener("resize", resize);
+
+    window.addEventListener(
+      "resize",
+      resizeCanvas
+    );
 
 
     /* =========================================================
-       WEBCAM ACTIVATION
-       Requests access to the user's camera
+       CAMERA + MICROPHONE ACTIVATION
+       Requests both video and audio permission
     ========================================================= */
 
-    webcamButton.addEventListener("click", async () => {
+    startButton.addEventListener(
+      "click",
+      async () => {
 
-      try {
+        try {
 
-        const stream =
-          await navigator.mediaDevices.getUserMedia({
+          const stream =
+            await navigator.mediaDevices.getUserMedia({
 
-            video: {
-              facingMode: "user"
-            },
+              video: {
+                facingMode: "user"
+              },
 
-            audio: false
+              audio: true
 
-          });
+            });
 
 
-        /* Remove default video source */
+          /* =====================================================
+             WEBCAM STREAM
+             Places webcam over the existing footage
+          ===================================================== */
 
-        video.pause();
+          webcam.srcObject =
+            stream;
 
-        video.removeAttribute("src");
+          webcam.classList.add(
+            "active"
+          );
 
-        while (video.firstChild) {
-          video.removeChild(video.firstChild);
+          await webcam.play();
+
+
+          /* =====================================================
+             AUDIO ANALYSIS
+             Uses microphone volume to control glitch behavior
+          ===================================================== */
+
+          const AudioContext =
+            window.AudioContext ||
+            window.webkitAudioContext;
+
+
+          const audioContext =
+            new AudioContext();
+
+
+          const source =
+            audioContext.createMediaStreamSource(
+              stream
+            );
+
+
+          analyser =
+            audioContext.createAnalyser();
+
+
+          analyser.fftSize = 256;
+
+          analyser.smoothingTimeConstant =
+            0.65;
+
+
+          source.connect(
+            analyser
+          );
+
+
+          audioData =
+            new Uint8Array(
+              analyser.frequencyBinCount
+            );
+
+
+          startButton.textContent =
+            "CAMERA + SOUND ACTIVE";
+
+
+          startButton.classList.add(
+            "active"
+          );
+
         }
 
+        catch (error) {
 
-        /* Attach webcam stream */
-
-        video.srcObject = stream;
-
-        video.loop = false;
-
-        video.muted = true;
-
-        await video.play();
+          console.error(
+            "Camera or microphone access failed:",
+            error
+          );
 
 
-        /* Change button label */
+          startButton.textContent =
+            "ACCESS FAILED";
 
-        webcamButton.textContent = "WEBCAM ACTIVE";
+        }
 
       }
-
-      catch (error) {
-
-        console.error(
-          "Webcam access failed:",
-          error
-        );
-
-        webcamButton.textContent =
-          "CAMERA ACCESS FAILED";
-
-      }
-
-    });
+    );
 
 
     /* =========================================================
-       MOUSE INTERACTION
-       Glitch intensity reacts to mouse movement speed
+       AUDIO LEVEL DETECTION
+       Converts microphone input into a normalized value
     ========================================================= */
 
-    addEventListener("mousemove", (event) => {
+    function updateAudioLevel() {
 
-      if (video.readyState < 2) return;
+      if (
+        !analyser ||
+        !audioData
+      ) {
 
+        audioLevel *= 0.92;
 
-      const x = event.clientX;
+        return;
 
-      const y = event.clientY;
-
-
-      const dx = x - lastX;
-
-      const dy = y - lastY;
-
-
-      const speed =
-        Math.hypot(dx, dy);
+      }
 
 
-      createGlitch(
-        x,
-        y,
-        speed
+      analyser.getByteFrequencyData(
+        audioData
       );
 
 
-      lastX = x;
+      let total = 0;
 
-      lastY = y;
 
-    });
+      for (
+        let i = 0;
+        i < audioData.length;
+        i++
+      ) {
+
+        total +=
+          audioData[i];
+
+      }
+
+
+      const average =
+        total /
+        audioData.length;
+
+
+      const rawLevel =
+        average / 255;
+
+
+      /* Increase microphone sensitivity */
+
+      const amplifiedLevel =
+        Math.min(
+          1,
+          rawLevel * 4.5
+        );
+
+
+      /* Smooth audio movement */
+
+      audioLevel =
+        audioLevel * 0.68 +
+        amplifiedLevel * 0.32;
+
+    }
 
 
     /* =========================================================
-       GLITCH GENERATOR
-       Creates multiple glitch bursts around mouse position
+       MOUSE TRACKING
+       Mouse affects only a small local area
     ========================================================= */
 
-    function createGlitch(x, y, speed) {
+    window.addEventListener(
+      "mousemove",
+      (event) => {
 
-      /* Capture current video frame */
+        mouseX =
+          event.clientX;
+
+        mouseY =
+          event.clientY;
+
+
+        const dx =
+          mouseX -
+          previousX;
+
+        const dy =
+          mouseY -
+          previousY;
+
+
+        mouseSpeed =
+          Math.hypot(
+            dx,
+            dy
+          );
+
+
+        previousX =
+          mouseX;
+
+        previousY =
+          mouseY;
+
+
+        createMouseGlitch();
+
+      }
+    );
+
+
+    /* =========================================================
+       COMPOSITE FRAME
+       Captures footage first and webcam second
+    ========================================================= */
+
+    function captureCompositeFrame() {
 
       bctx.clearRect(
         0,
@@ -369,97 +626,211 @@
       );
 
 
-      bctx.drawImage(
-        video,
-        0,
-        0,
-        buffer.width,
-        buffer.height
+      /* MAIN FOOTAGE */
+
+      if (
+        footage.readyState >= 2
+      ) {
+
+        bctx.globalAlpha = 1;
+
+        bctx.globalCompositeOperation =
+          "source-over";
+
+
+        bctx.drawImage(
+          footage,
+          0,
+          0,
+          buffer.width,
+          buffer.height
+        );
+
+      }
+
+
+      /* WEBCAM OVERLAY */
+
+      if (
+        webcam.readyState >= 2 &&
+        webcam.classList.contains(
+          "active"
+        )
+      ) {
+
+        bctx.globalAlpha =
+          0.42;
+
+        bctx.globalCompositeOperation =
+          "screen";
+
+
+        bctx.drawImage(
+          webcam,
+          0,
+          0,
+          buffer.width,
+          buffer.height
+        );
+
+      }
+
+
+      bctx.globalAlpha = 1;
+
+      bctx.globalCompositeOperation =
+        "source-over";
+
+    }
+
+
+    /* =========================================================
+       RANDOM VALUE HELPER
+    ========================================================= */
+
+    function random(
+      min,
+      max
+    ) {
+
+      return (
+        min +
+        Math.random() *
+        (max - min)
       );
 
+    }
 
-      /* Calculate glitch radius */
 
-      const radius =
+    /* =========================================================
+       RANDOM COLOR HELPER
+    ========================================================= */
+
+    function randomColor() {
+
+      return glitchColors[
+        Math.floor(
+          Math.random() *
+          glitchColors.length
+        )
+      ];
+
+    }
+
+
+    /* =========================================================
+       LOCAL MOUSE GLITCH
+       Creates small irregular distortion around the cursor
+    ========================================================= */
+
+    function createMouseGlitch() {
+
+      if (
+        footage.readyState < 2
+      ) {
+        return;
+      }
+
+
+      captureCompositeFrame();
+
+
+      const speedInfluence =
         Math.min(
-          MAX_RADIUS,
-
-          Math.max(
-            MIN_RADIUS,
-            300 + speed * 8 * GLITCH_POWER
-          )
+          mouseSpeed,
+          30
         );
 
 
-      /* Number of glitch explosions */
+      const radius =
+        Math.min(
+          MAX_GLITCH_RADIUS,
 
-      const bursts =
-        BURST_MIN +
+          MIN_GLITCH_RADIUS +
+          speedInfluence * 1.5 +
+          audioLevel * 35
+        );
+
+
+      const count =
         Math.floor(
-          Math.random() *
-          BURST_RANDOM *
-          GLITCH_POWER
+
+          BASE_FRAGMENT_COUNT +
+
+          Math.random() * 14 +
+
+          audioLevel * 18
+
         );
 
 
       for (
-        let burst = 0;
-        burst < bursts;
-        burst++
+        let i = 0;
+        i < count;
+        i++
       ) {
 
-        const localX =
-          x +
-          (Math.random() - 0.5) *
-          radius *
-          1.8;
+        const chance =
+          Math.random();
 
 
-        const localY =
-          y +
-          (Math.random() - 0.5) *
-          radius *
-          1.8;
+        if (
+          chance < 0.34
+        ) {
 
+          microHorizontalGlitch(
+            mouseX,
+            mouseY,
+            radius
+          );
 
-        horizontalTear(
-          localX,
-          localY,
-          radius,
-          speed
-        );
+        }
 
+        else if (
+          chance < 0.60
+        ) {
 
-        rgbSplit(
-          localX,
-          localY,
-          radius,
-          speed
-        );
+          microPixelGlitch(
+            mouseX,
+            mouseY,
+            radius
+          );
 
+        }
 
-        pixelBlocks(
-          localX,
-          localY,
-          radius,
-          speed
-        );
+        else if (
+          chance < 0.78
+        ) {
 
+          microRGBGlitch(
+            mouseX,
+            mouseY,
+            radius
+          );
 
-        colorSlices(
-          localX,
-          localY,
-          radius,
-          speed
-        );
+        }
 
+        else if (
+          chance < 0.92
+        ) {
 
-        verticalGlitch(
-          localX,
-          localY,
-          radius,
-          speed
-        );
+          microColorGlitch(
+            mouseX,
+            mouseY,
+            radius
+          );
+
+        }
+
+        else {
+
+          microNoiseGlitch(
+            mouseX,
+            mouseY,
+            radius
+          );
+
+        }
 
       }
 
@@ -467,91 +838,533 @@
 
 
     /* =========================================================
-       HORIZONTAL TEARING
-       Moves thin horizontal strips left and right
+       MICRO HORIZONTAL GLITCH
+       Tiny horizontal fragments with irregular displacement
     ========================================================= */
 
-    function horizontalTear(
+    function microHorizontalGlitch(
       x,
       y,
-      radius,
-      speed
+      radius
     ) {
 
-      const slices =
-        45 +
-        Math.floor(
-          Math.random() * 80
+      const width =
+        random(
+          8,
+          75
         );
 
 
-      for (
-        let i = 0;
-        i < slices;
-        i++
+      const height =
+        random(
+          1,
+          5
+        );
+
+
+      const sourceX =
+        x +
+        random(
+          -radius,
+          radius
+        );
+
+
+      const sourceY =
+        y +
+        random(
+          -radius,
+          radius
+        );
+
+
+      const offset =
+        random(
+          -45,
+          45
+        ) *
+        (
+          0.7 +
+          audioLevel * 2.5
+        );
+
+
+      ctx.globalAlpha =
+        random(
+          0.35,
+          0.9
+        );
+
+
+      ctx.drawImage(
+
+        buffer,
+
+        sourceX,
+        sourceY,
+
+        width,
+        height,
+
+        sourceX + offset,
+
+        sourceY +
+        random(
+          -5,
+          5
+        ),
+
+        width *
+        random(
+          0.6,
+          1.7
+        ),
+
+        height
+
+      );
+
+
+      ctx.globalAlpha = 1;
+
+    }
+
+
+    /* =========================================================
+       MICRO PIXEL GLITCH
+       Very small rectangular fragments
+    ========================================================= */
+
+    function microPixelGlitch(
+      x,
+      y,
+      radius
+    ) {
+
+      const width =
+        random(
+          2,
+          22
+        );
+
+
+      const height =
+        random(
+          1,
+          13
+        );
+
+
+      const sourceX =
+        x +
+        random(
+          -radius,
+          radius
+        );
+
+
+      const sourceY =
+        y +
+        random(
+          -radius,
+          radius
+        );
+
+
+      const offsetX =
+        random(
+          -32,
+          32
+        ) *
+        (
+          1 +
+          audioLevel * 2
+        );
+
+
+      const offsetY =
+        random(
+          -15,
+          15
+        );
+
+
+      ctx.globalAlpha =
+        random(
+          0.35,
+          1
+        );
+
+
+      ctx.drawImage(
+
+        buffer,
+
+        sourceX,
+        sourceY,
+
+        width,
+        height,
+
+        sourceX +
+        offsetX,
+
+        sourceY +
+        offsetY,
+
+        width *
+        random(
+          0.5,
+          2.4
+        ),
+
+        height *
+        random(
+          0.6,
+          1.6
+        )
+
+      );
+
+
+      ctx.globalAlpha = 1;
+
+    }
+
+
+    /* =========================================================
+       MICRO RGB SPLIT
+       Small sharp red / cyan / magenta separations
+    ========================================================= */
+
+    function microRGBGlitch(
+      x,
+      y,
+      radius
+    ) {
+
+      const width =
+        random(
+          5,
+          45
+        );
+
+
+      const height =
+        random(
+          1,
+          9
+        );
+
+
+      const sourceX =
+        x +
+        random(
+          -radius,
+          radius
+        );
+
+
+      const sourceY =
+        y +
+        random(
+          -radius,
+          radius
+        );
+
+
+      const shift =
+        random(
+          4,
+          18
+        ) *
+        (
+          1 +
+          audioLevel * 2.5
+        );
+
+
+      ctx.globalCompositeOperation =
+        "screen";
+
+
+      /* RED */
+
+      ctx.globalAlpha =
+        random(
+          0.45,
+          0.9
+        );
+
+
+      ctx.filter =
+        "sepia(1) saturate(18) hue-rotate(-35deg) contrast(3)";
+
+
+      ctx.drawImage(
+
+        buffer,
+
+        sourceX,
+        sourceY,
+
+        width,
+        height,
+
+        sourceX +
+        shift,
+
+        sourceY,
+
+        width,
+        height
+
+      );
+
+
+      /* CYAN */
+
+      ctx.globalAlpha =
+        random(
+          0.4,
+          0.85
+        );
+
+
+      ctx.filter =
+        "sepia(1) saturate(18) hue-rotate(145deg) contrast(3.4)";
+
+
+      ctx.drawImage(
+
+        buffer,
+
+        sourceX,
+        sourceY,
+
+        width,
+        height,
+
+        sourceX -
+        shift,
+
+        sourceY +
+        random(
+          -2,
+          2
+        ),
+
+        width,
+        height
+
+      );
+
+
+      /* MAGENTA — RANDOM OCCURRENCE */
+
+      if (
+        Math.random() > 0.5
       ) {
 
-        const h =
-          1 +
-          Math.random() * 35;
-
-
-        const w =
-          radius *
-          (
-            0.3 +
-            Math.random() * 2
-          );
-
-
-        const sx =
-          x - w / 2;
-
-
-        const sy =
-          y -
-          radius / 2 +
-          Math.random() * radius;
-
-
-        const shift =
-          (Math.random() - 0.5) *
-          (
-            320 +
-            speed *
-            18 *
-            GLITCH_POWER
-          );
-
-
         ctx.globalAlpha =
-          0.35 +
-          Math.random() * 0.65;
+          random(
+            0.35,
+            0.75
+          );
+
+
+        ctx.filter =
+          "sepia(1) saturate(20) hue-rotate(280deg) contrast(3.8)";
 
 
         ctx.drawImage(
 
           buffer,
 
-          sx,
-          sy,
-          w,
-          h,
+          sourceX,
+          sourceY,
 
-          sx + shift,
+          width,
+          height,
 
-          sy +
-          (Math.random() - 0.5) *
-          35,
-
-          w *
-          (
-            0.6 +
-            Math.random() *
-            1.8
+          sourceX +
+          random(
+            -10,
+            10
           ),
 
-          h
+          sourceY +
+          random(
+            -4,
+            4
+          ),
+
+          width,
+          height
+
+        );
+
+      }
+
+
+      ctx.filter =
+        "none";
+
+
+      ctx.globalCompositeOperation =
+        "source-over";
+
+
+      ctx.globalAlpha = 1;
+
+    }
+
+
+    /* =========================================================
+       MICRO SHARP COLOR GLITCH
+       Tiny saturated color interruptions
+    ========================================================= */
+
+    function microColorGlitch(
+      x,
+      y,
+      radius
+    ) {
+
+      const px =
+        x +
+        random(
+          -radius,
+          radius
+        );
+
+
+      const py =
+        y +
+        random(
+          -radius,
+          radius
+        );
+
+
+      const width =
+        random(
+          2,
+          35
+        );
+
+
+      const height =
+        random(
+          1,
+          8
+        );
+
+
+      ctx.fillStyle =
+        randomColor();
+
+
+      ctx.globalAlpha =
+        random(
+          0.25,
+          0.85
+        );
+
+
+      ctx.fillRect(
+
+        px,
+
+        py,
+
+        width,
+
+        height
+
+      );
+
+
+      ctx.globalAlpha = 1;
+
+    }
+
+
+    /* =========================================================
+       MICRO DIGITAL NOISE
+       Tiny single-pixel and micro-block interruptions
+    ========================================================= */
+
+    function microNoiseGlitch(
+      x,
+      y,
+      radius
+    ) {
+
+      const amount =
+        Math.floor(
+          random(
+            3,
+            12
+          )
+        );
+
+
+      for (
+        let i = 0;
+        i < amount;
+        i++
+      ) {
+
+        const px =
+          x +
+          random(
+            -radius,
+            radius
+          );
+
+
+        const py =
+          y +
+          random(
+            -radius,
+            radius
+          );
+
+
+        const size =
+          random(
+            1,
+            4
+          );
+
+
+        ctx.fillStyle =
+          Math.random() > 0.35
+            ? randomColor()
+            : "#ffffff";
+
+
+        ctx.globalAlpha =
+          random(
+            0.25,
+            0.9
+          );
+
+
+        ctx.fillRect(
+
+          px,
+
+          py,
+
+          size *
+          random(
+            1,
+            5
+          ),
+
+          size
 
         );
 
@@ -564,78 +1377,243 @@
 
 
     /* =========================================================
-       RGB COLOR SPLIT
-       Separates image into red, cyan and magenta layers
+       SOUND-REACTIVE RANDOM GLITCH
+       Creates distortion in unpredictable screen locations
+       even when the mouse is not moving
     ========================================================= */
 
-    function rgbSplit(
-      x,
-      y,
-      radius,
-      speed
-    ) {
+    function createAudioGlitch() {
 
-      const pieces =
-        30 +
+      if (
+        footage.readyState < 2
+      ) {
+        return;
+      }
+
+
+      if (
+        audioLevel < 0.045
+      ) {
+        return;
+      }
+
+
+      /* Higher sound = higher probability */
+
+      const probability =
+        0.08 +
+        audioLevel * 0.72;
+
+
+      if (
+        Math.random() >
+        probability
+      ) {
+        return;
+      }
+
+
+      captureCompositeFrame();
+
+
+      const centerX =
+        random(
+          0,
+          canvas.width
+        );
+
+
+      const centerY =
+        random(
+          0,
+          canvas.height
+        );
+
+
+      const radius =
+        random(
+          20,
+          65 +
+          audioLevel * 80
+        );
+
+
+      const count =
         Math.floor(
-          Math.random() * 45
+
+          2 +
+
+          Math.random() *
+          (
+            5 +
+            audioLevel *
+            MAX_FRAGMENT_COUNT
+          )
+
         );
 
 
       for (
         let i = 0;
-        i < pieces;
+        i < count;
         i++
       ) {
 
-        const w =
-          20 +
-          Math.random() *
-          radius;
+        const type =
+          Math.random();
 
 
-        const h =
-          2 +
-          Math.random() *
-          100;
+        if (
+          type < 0.28
+        ) {
+
+          microHorizontalGlitch(
+            centerX,
+            centerY,
+            radius
+          );
+
+        }
+
+        else if (
+          type < 0.52
+        ) {
+
+          microPixelGlitch(
+            centerX,
+            centerY,
+            radius
+          );
+
+        }
+
+        else if (
+          type < 0.70
+        ) {
+
+          microRGBGlitch(
+            centerX,
+            centerY,
+            radius
+          );
+
+        }
+
+        else if (
+          type < 0.88
+        ) {
+
+          microColorGlitch(
+            centerX,
+            centerY,
+            radius
+          );
+
+        }
+
+        else {
+
+          microNoiseGlitch(
+            centerX,
+            centerY,
+            radius
+          );
+
+        }
+
+      }
+
+    }
 
 
-        const sx =
-          x -
-          radius / 2 +
-          Math.random() *
-          radius;
+    /* =========================================================
+       RARE GLITCH SPIKES
+       Occasional sudden unpredictable digital ruptures
+    ========================================================= */
+
+    function randomSpike() {
+
+      if (
+        Math.random() > 0.018
+      ) {
+        return;
+      }
 
 
-        const sy =
-          y -
-          radius / 2 +
-          Math.random() *
-          radius;
+      if (
+        footage.readyState < 2
+      ) {
+        return;
+      }
 
 
-        const shift =
-          35 +
-          Math.random() *
-          (
-            180 +
-            speed *
-            12 *
-            GLITCH_POWER
+      captureCompositeFrame();
+
+
+      const x =
+        random(
+          0,
+          canvas.width
+        );
+
+
+      const y =
+        random(
+          0,
+          canvas.height
+        );
+
+
+      const fragments =
+        Math.floor(
+          random(
+            4,
+            18
+          )
+        );
+
+
+      for (
+        let i = 0;
+        i < fragments;
+        i++
+      ) {
+
+        const width =
+          random(
+            4,
+            90
           );
 
 
-        /* RED CHANNEL */
+        const height =
+          random(
+            1,
+            6
+          );
 
-        ctx.globalCompositeOperation =
-          "screen";
+
+        const sx =
+          x +
+          random(
+            -80,
+            80
+          );
+
+
+        const sy =
+          y +
+          random(
+            -60,
+            60
+          );
+
 
         ctx.globalAlpha =
-          0.6 +
-          Math.random() * 0.4;
-
-        ctx.filter =
-          "sepia(1) saturate(15) hue-rotate(-35deg) contrast(3)";
+          random(
+            0.35,
+            0.95
+          );
 
 
         ctx.drawImage(
@@ -644,83 +1622,67 @@
 
           sx,
           sy,
-          w,
-          h,
 
-          sx + shift,
-          sy,
+          width,
+          height,
 
-          w,
-          h
-
-        );
-
-
-        /* CYAN CHANNEL */
-
-        ctx.globalAlpha =
-          0.55 +
-          Math.random() * 0.4;
-
-        ctx.filter =
-          "sepia(1) saturate(15) hue-rotate(150deg) contrast(3)";
-
-
-        ctx.drawImage(
-
-          buffer,
-
-          sx,
-          sy,
-          w,
-          h,
-
-          sx - shift,
+          sx +
+          random(
+            -100,
+            100
+          ),
 
           sy +
-          (Math.random() - 0.5) *
-          20,
+          random(
+            -8,
+            8
+          ),
 
-          w,
-          h
+          width *
+          random(
+            0.5,
+            2
+          ),
+
+          height
 
         );
 
 
-        /* MAGENTA CHANNEL */
+        if (
+          Math.random() > 0.55
+        ) {
 
-        if (Math.random() > 0.15) {
+          ctx.fillStyle =
+            randomColor();
+
 
           ctx.globalAlpha =
-            0.5 +
-            Math.random() * 0.45;
+            random(
+              0.2,
+              0.65
+            );
 
-          ctx.filter =
-            "sepia(1) saturate(18) hue-rotate(280deg) contrast(3.5)";
 
-
-          ctx.drawImage(
-
-            buffer,
-
-            sx,
-            sy,
-            w,
-            h,
+          ctx.fillRect(
 
             sx +
-            shift *
-            (
-              0.3 +
-              Math.random()
+            random(
+              -30,
+              30
             ),
 
-            sy -
-            Math.random() *
-            25,
+            sy,
 
-            w,
-            h
+            random(
+              2,
+              30
+            ),
+
+            random(
+              1,
+              4
+            )
 
           );
 
@@ -729,302 +1691,76 @@
       }
 
 
-      ctx.filter = "none";
+      ctx.globalAlpha = 1;
+
+    }
+
+
+    /* =========================================================
+       GLITCH DECAY
+       Slowly removes old glitch fragments from the screen
+    ========================================================= */
+
+    function fadeGlitchCanvas() {
+
+      ctx.save();
+
 
       ctx.globalCompositeOperation =
-        "source-over";
-
-      ctx.globalAlpha = 1;
-
-    }
+        "destination-out";
 
 
-    /* =========================================================
-       PIXEL BLOCK DISTORTION
-       Creates stretched rectangular fragments of the image
-    ========================================================= */
-
-    function pixelBlocks(
-      x,
-      y,
-      radius,
-      speed
-    ) {
-
-      const count =
-        40 +
-        Math.floor(
-          Math.random() * 70
-        );
+      ctx.fillStyle =
+        "rgba(0,0,0,0.12)";
 
 
-      for (
-        let i = 0;
-        i < count;
-        i++
-      ) {
-
-        const w =
-          5 +
-          Math.random() *
-          radius *
-          0.7;
+      ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
 
 
-        const h =
-          2 +
-          Math.random() *
-          65;
-
-
-        const sx =
-          x -
-          radius / 2 +
-          Math.random() *
-          radius;
-
-
-        const sy =
-          y -
-          radius / 2 +
-          Math.random() *
-          radius;
-
-
-        const offset =
-          (Math.random() - 0.5) *
-          (
-            400 +
-            speed *
-            20 *
-            GLITCH_POWER
-          );
-
-
-        ctx.globalAlpha =
-          0.35 +
-          Math.random() *
-          0.65;
-
-
-        ctx.drawImage(
-
-          buffer,
-
-          sx,
-          sy,
-          w,
-          h,
-
-          sx + offset,
-
-          sy +
-          (Math.random() - 0.5) *
-          70,
-
-          w *
-          (
-            0.4 +
-            Math.random() *
-            3
-          ),
-
-          h
-
-        );
-
-      }
-
-
-      ctx.globalAlpha = 1;
+      ctx.restore();
 
     }
 
 
     /* =========================================================
-       SHARP COLOR BLOCKS
-       Adds bright artificial color interruptions
+       MAIN ANIMATION LOOP
+       Continuously reads audio and creates irregular distortion
     ========================================================= */
 
-    function colorSlices(
-      x,
-      y,
-      radius,
-      speed
-    ) {
+    function animate() {
 
-      const count =
-        20 +
-        Math.floor(
-          Math.random() * 45
-        );
+      updateAudioLevel();
 
 
-      for (
-        let i = 0;
-        i < count;
-        i++
-      ) {
-
-        const color =
-          glitchColors[
-            Math.floor(
-              Math.random() *
-              glitchColors.length
-            )
-          ];
+      fadeGlitchCanvas();
 
 
-        const width =
-          10 +
-          Math.random() *
-          radius *
-          0.9;
+      createAudioGlitch();
 
 
-        const height =
-          1 +
-          Math.random() *
-          45;
+      randomSpike();
 
 
-        const px =
-          x +
-          (Math.random() - 0.5) *
-          radius *
-          1.5;
+      mouseSpeed *= 0.82;
 
 
-        const py =
-          y +
-          (Math.random() - 0.5) *
-          radius *
-          1.5;
-
-
-        ctx.globalAlpha =
-          0.18 +
-          Math.random() *
-          0.75;
-
-
-        ctx.fillStyle = color;
-
-
-        ctx.fillRect(
-
-          px +
-          (Math.random() - 0.5) *
-          speed *
-          5,
-
-          py,
-
-          width,
-
-          height
-
-        );
-
-      }
-
-
-      ctx.globalAlpha = 1;
+      requestAnimationFrame(
+        animate
+      );
 
     }
 
 
     /* =========================================================
-       VERTICAL GLITCH
-       Adds vertical displacement for less predictable distortion
+       START ANIMATION
     ========================================================= */
 
-    function verticalGlitch(
-      x,
-      y,
-      radius,
-      speed
-    ) {
-
-      const pieces =
-        10 +
-        Math.floor(
-          Math.random() *
-          25
-        );
-
-
-      for (
-        let i = 0;
-        i < pieces;
-        i++
-      ) {
-
-        const w =
-          2 +
-          Math.random() *
-          35;
-
-
-        const h =
-          40 +
-          Math.random() *
-          radius;
-
-
-        const sx =
-          x +
-          (Math.random() - 0.5) *
-          radius;
-
-
-        const sy =
-          y +
-          (Math.random() - 0.5) *
-          radius;
-
-
-        const shiftY =
-          (Math.random() - 0.5) *
-          (
-            250 +
-            speed *
-            15
-          );
-
-
-        ctx.globalAlpha =
-          0.3 +
-          Math.random() *
-          0.7;
-
-
-        ctx.drawImage(
-
-          buffer,
-
-          sx,
-          sy,
-          w,
-          h,
-
-          sx +
-          (Math.random() - 0.5) *
-          50,
-
-          sy + shiftY,
-
-          w,
-          h
-
-        );
-
-      }
-
-
-      ctx.globalAlpha = 1;
-
-    }
+    animate();
 
 
   </script>
