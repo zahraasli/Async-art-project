@@ -37,29 +37,38 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
+
       background: #000000;
+
       cursor: crosshair;
-      font-family: Arial, Helvetica, sans-serif;
+
+      font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
     }
 
 
     /* =========================================================
-       MAIN OUTPUT CANVAS
-       Displays footage, webcam halo and glitch
+       WEBGL OUTPUT
+       Final interactive visual appears here
     ========================================================= */
 
-    #outputCanvas {
+    #glCanvas {
       position: fixed;
+
       inset: 0;
 
       width: 100%;
       height: 100%;
+
+      display: block;
     }
 
 
     /* =========================================================
        HIDDEN VIDEO SOURCES
-       Footage and webcam are processed in JavaScript
+       Videos are processed internally
     ========================================================= */
 
     #footage,
@@ -76,7 +85,7 @@
 
 
     /* =========================================================
-       CAMERA + MICROPHONE BUTTON
+       CAMERA + SOUND BUTTON
     ========================================================= */
 
     #startButton {
@@ -87,19 +96,24 @@
 
       z-index: 20;
 
-      padding: 9px 14px;
+      padding: 9px 15px;
 
-      border: 1px solid rgba(255,255,255,0.8);
+      border:
+        1px solid
+        rgba(255,255,255,0.75);
 
-      background: rgba(0,0,0,0.5);
+      background:
+        rgba(0,0,0,0.45);
 
       color: white;
 
-      font-size: 11px;
+      font-size: 10px;
 
-      letter-spacing: 1.4px;
+      letter-spacing: 1.6px;
 
       cursor: pointer;
+
+      backdrop-filter: blur(5px);
     }
 
 
@@ -108,7 +122,7 @@
     ========================================================= */
 
     #startButton.active {
-      opacity: 0.22;
+      opacity: 0.2;
     }
 
   </style>
@@ -121,7 +135,7 @@
 
   <!-- =========================================================
        MAIN FOOTAGE
-       Replace this video later with your own footage
+       Replace this URL later with your own video
   ========================================================== -->
 
   <video
@@ -142,8 +156,10 @@
 
 
   <!-- =========================================================
-       LIVE WEBCAM SOURCE
-    ========================================================== -->
+       WEBCAM SOURCE
+       Webcam is NEVER shown directly
+       Only movement information is extracted
+  ========================================================== -->
 
   <video
     id="webcam"
@@ -155,7 +171,7 @@
 
   <!-- =========================================================
        CAMERA + MICROPHONE CONTROL
-    ========================================================== -->
+  ========================================================== -->
 
   <button id="startButton">
     ENABLE CAMERA + SOUND
@@ -163,10 +179,10 @@
 
 
   <!-- =========================================================
-       FINAL OUTPUT CANVAS
-    ========================================================== -->
+       FINAL WEBGL CANVAS
+  ========================================================== -->
 
-  <canvas id="outputCanvas"></canvas>
+  <canvas id="glCanvas"></canvas>
 
 
   <script>
@@ -176,121 +192,87 @@
        HTML ELEMENT REFERENCES
     ========================================================= */
 
+    const canvas =
+      document.getElementById("glCanvas");
+
     const footage =
       document.getElementById("footage");
 
     const webcam =
       document.getElementById("webcam");
 
-    const canvas =
-      document.getElementById("outputCanvas");
-
-    const ctx =
-      canvas.getContext("2d");
-
     const startButton =
       document.getElementById("startButton");
 
 
     /* =========================================================
-       COMPOSITE BUFFER
-       Stores footage + webcam halo
+       WEBGL CONTEXT
+       WebGL creates pixel-level distortion
     ========================================================= */
 
-    const compositeCanvas =
-      document.createElement("canvas");
-
-    const compositeCtx =
-      compositeCanvas.getContext("2d");
-
-
-    /* =========================================================
-       TEMPORAL MEMORY BUFFER
-       Stores previous frames for datamosh feedback
-    ========================================================= */
-
-    const memoryCanvas =
-      document.createElement("canvas");
-
-    const memoryCtx =
-      memoryCanvas.getContext("2d");
-
-
-    /* =========================================================
-       WEBCAM HALO BUFFER
-       Processes webcam separately before merging
-    ========================================================= */
-
-    const haloCanvas =
-      document.createElement("canvas");
-
-    const haloCtx =
-      haloCanvas.getContext("2d");
-
-
-    /* =========================================================
-       MOTION DETECTION BUFFER
-    ========================================================= */
-
-    const motionCanvas =
-      document.createElement("canvas");
-
-    const motionCtx =
-      motionCanvas.getContext(
-        "2d",
-        { willReadFrequently: true }
+    const gl =
+      canvas.getContext(
+        "webgl2",
+        {
+          alpha: false,
+          antialias: false,
+          preserveDrawingBuffer: false
+        }
       );
 
 
-    const MOTION_WIDTH = 64;
-    const MOTION_HEIGHT = 48;
+    if (!gl) {
 
+      alert(
+        "WebGL2 is not supported in this browser."
+      );
 
-    motionCanvas.width =
-      MOTION_WIDTH;
+      throw new Error(
+        "WebGL2 unavailable"
+      );
 
-    motionCanvas.height =
-      MOTION_HEIGHT;
+    }
 
 
     /* =========================================================
-       GLOBAL STATE
+       VIDEO PROCESSING CANVASES
+       Converts videos into screen-sized textures
+    ========================================================= */
+
+    const footageBuffer =
+      document.createElement("canvas");
+
+    const footageCtx =
+      footageBuffer.getContext("2d");
+
+
+    const webcamBuffer =
+      document.createElement("canvas");
+
+    const webcamCtx =
+      webcamBuffer.getContext("2d");
+
+
+    const previousWebcamBuffer =
+      document.createElement("canvas");
+
+    const previousWebcamCtx =
+      previousWebcamBuffer.getContext("2d");
+
+
+    /* =========================================================
+       INTERACTION STATE
     ========================================================= */
 
     let webcamActive = false;
 
-    let previousMotionFrame = null;
+    let mouseX = 0.5;
+    let mouseY = 0.5;
 
-    let webcamMotionAmount = 0;
-
-    let webcamMotionX =
-      innerWidth / 2;
-
-    let webcamMotionY =
-      innerHeight / 2;
-
-
-    /* =========================================================
-       MOUSE STATE
-    ========================================================= */
-
-    let mouseX =
-      innerWidth / 2;
-
-    let mouseY =
-      innerHeight / 2;
-
-    let lastMouseX =
-      mouseX;
-
-    let lastMouseY =
-      mouseY;
+    let previousMouseX = 0.5;
+    let previousMouseY = 0.5;
 
     let mouseSpeed = 0;
-
-    let mouseMoving = false;
-
-    let mouseTimer = null;
 
 
     /* =========================================================
@@ -299,144 +281,1454 @@
 
     let analyser = null;
 
-    let timeData = null;
-
-    let frequencyData = null;
+    let audioData = null;
 
     let audioLevel = 0;
-
-    let bassLevel = 0;
 
     let audioPeak = 0;
 
 
     /* =========================================================
-       WEBCAM HALO VISIBILITY
-       Lower value = less visible webcam
+       VISUAL SETTINGS
+       These are the main parameters to edit
     ========================================================= */
 
-    const WEBCAM_HALO_OPACITY = 0.13;
+
+    /* ---------------------------------------------------------
+       WEBCAM HALO STRENGTH
+       Lower = less visible webcam presence
+    --------------------------------------------------------- */
+
+    const WEBCAM_HALO = 0.16;
 
 
-    /* =========================================================
-       WEBCAM HALO BLUR
-       Higher value makes the webcam more ghost-like
-    ========================================================= */
+    /* ---------------------------------------------------------
+       WEBCAM MOTION SENSITIVITY
+       Higher = smaller movements create glitch
+    --------------------------------------------------------- */
 
-    const WEBCAM_BLUR = 15;
-
-
-    /* =========================================================
-       MOUSE GLITCH AREA
-       Keeps mouse interaction local
-    ========================================================= */
-
-    const MOUSE_MIN_RADIUS = 20;
-    const MOUSE_MAX_RADIUS = 55;
+    const MOTION_SENSITIVITY = 4.8;
 
 
-    /* =========================================================
-       WEBCAM MOTION GLITCH AREA
-    ========================================================= */
-
-    const MOTION_MIN_RADIUS = 30;
-    const MOTION_MAX_RADIUS = 120;
-
-
-    /* =========================================================
+    /* ---------------------------------------------------------
        AUDIO SENSITIVITY
-       Higher value = stronger reaction to sound
-    ========================================================= */
+       Higher = stronger sound reaction
+    --------------------------------------------------------- */
 
-    const AUDIO_SENSITIVITY = 11;
-
-
-    /* =========================================================
-       DATAMOSH STRENGTH
-    ========================================================= */
-
-    const MOSH_STRENGTH = 1.8;
+    const AUDIO_SENSITIVITY = 14.0;
 
 
-    /* =========================================================
-       TEMPORAL MEMORY
-       Higher value preserves old image information longer
-    ========================================================= */
+    /* ---------------------------------------------------------
+       MOUSE EFFECT SIZE
+       Smaller = mouse affects less screen area
+    --------------------------------------------------------- */
 
-    const MEMORY_AMOUNT = 0.91;
+    const MOUSE_RADIUS = 0.055;
 
 
-    /* =========================================================
-       EXTREME GLITCH COLORS
-       High-saturation palette
-    ========================================================= */
+    /* ---------------------------------------------------------
+       COLOR INTENSITY
+       Higher = more exaggerated neon colors
+    --------------------------------------------------------- */
 
-    const glitchColors = [
+    const COLOR_INTENSITY = 2.8;
 
-      "#ff003c",
-      "#ff0000",
-      "#ff4d00",
-      "#ff8c00",
 
-      "#fff000",
-      "#c8ff00",
+    /* ---------------------------------------------------------
+       DATAMOSH FEEDBACK
+       Higher = previous frames remain longer
+    --------------------------------------------------------- */
 
-      "#00ff3c",
-      "#00ff9d",
-      "#00fff0",
-
-      "#00aaff",
-      "#0040ff",
-
-      "#5500ff",
-      "#9600ff",
-
-      "#ff00e1",
-      "#ff0077"
-
-    ];
+    const FEEDBACK_AMOUNT = 0.91;
 
 
     /* =========================================================
-       RANDOM NUMBER HELPER
+       VERTEX SHADER
+       Draws one full-screen rectangle
     ========================================================= */
 
-    function random(min, max) {
+    const vertexShaderSource = `#version 300 es
 
-      return (
-        min +
-        Math.random() *
-        (max - min)
+      precision highp float;
+
+      in vec2 a_position;
+
+      out vec2 v_uv;
+
+      void main() {
+
+        v_uv =
+          a_position * 0.5 + 0.5;
+
+        gl_Position =
+          vec4(
+            a_position,
+            0.0,
+            1.0
+          );
+
+      }
+
+    `;
+
+
+    /* =========================================================
+       MAIN GLITCH FRAGMENT SHADER
+       Creates organic datamosh-style pixel corruption
+    ========================================================= */
+
+    const fragmentShaderSource = `#version 300 es
+
+      precision highp float;
+
+
+      /* =======================================================
+         INPUT TEXTURES
+      ======================================================= */
+
+      uniform sampler2D u_footage;
+
+      uniform sampler2D u_webcam;
+
+      uniform sampler2D u_previousWebcam;
+
+      uniform sampler2D u_feedback;
+
+
+      /* =======================================================
+         INTERACTION UNIFORMS
+      ======================================================= */
+
+      uniform vec2 u_resolution;
+
+      uniform vec2 u_mouse;
+
+      uniform float u_mouseSpeed;
+
+      uniform float u_time;
+
+      uniform float u_audio;
+
+      uniform float u_audioPeak;
+
+      uniform float u_webcamActive;
+
+
+      /* =======================================================
+         VISUAL SETTINGS
+      ======================================================= */
+
+      uniform float u_webcamHalo;
+
+      uniform float u_motionSensitivity;
+
+      uniform float u_mouseRadius;
+
+      uniform float u_colorIntensity;
+
+      uniform float u_feedbackAmount;
+
+
+      in vec2 v_uv;
+
+      out vec4 outColor;
+
+
+      /* =======================================================
+         RANDOM HASH
+         Generates irregular digital randomness
+      ======================================================= */
+
+      float hash21(vec2 p) {
+
+        p =
+          fract(
+            p *
+            vec2(
+              123.34,
+              456.21
+            )
+          );
+
+        p +=
+          dot(
+            p,
+            p + 45.32
+          );
+
+        return
+          fract(
+            p.x *
+            p.y
+          );
+
+      }
+
+
+      /* =======================================================
+         SMOOTH NOISE
+         Creates non-geometric distortion
+      ======================================================= */
+
+      float noise(vec2 p) {
+
+        vec2 i =
+          floor(p);
+
+        vec2 f =
+          fract(p);
+
+
+        float a =
+          hash21(i);
+
+        float b =
+          hash21(
+            i +
+            vec2(1.0,0.0)
+          );
+
+        float c =
+          hash21(
+            i +
+            vec2(0.0,1.0)
+          );
+
+        float d =
+          hash21(
+            i +
+            vec2(1.0,1.0)
+          );
+
+
+        vec2 u =
+          f *
+          f *
+          (
+            3.0 -
+            2.0 *
+            f
+          );
+
+
+        return mix(
+
+          mix(
+            a,
+            b,
+            u.x
+          ),
+
+          mix(
+            c,
+            d,
+            u.x
+          ),
+
+          u.y
+
+        );
+
+      }
+
+
+      /* =======================================================
+         FRACTAL NOISE
+         Creates organic irregular motion
+      ======================================================= */
+
+      float fbm(vec2 p) {
+
+        float value = 0.0;
+
+        float amplitude = 0.5;
+
+
+        for (
+          int i = 0;
+          i < 5;
+          i++
+        ) {
+
+          value +=
+            amplitude *
+            noise(p);
+
+          p =
+            p *
+            2.03 +
+            vec2(
+              13.1,
+              7.7
+            );
+
+          amplitude *=
+            0.48;
+
+        }
+
+
+        return value;
+
+      }
+
+
+      /* =======================================================
+         COLOR SATURATION
+         Pushes colors toward exaggerated neon values
+      ======================================================= */
+
+      vec3 saturateColor(
+        vec3 color,
+        float amount
+      ) {
+
+        float gray =
+          dot(
+            color,
+            vec3(
+              0.299,
+              0.587,
+              0.114
+            )
+          );
+
+
+        return mix(
+          vec3(gray),
+          color,
+          amount
+        );
+
+      }
+
+
+      /* =======================================================
+         COLOR ROTATION
+         Produces cyan / magenta / green / red shifts
+      ======================================================= */
+
+      vec3 hueShift(
+        vec3 color,
+        float angle
+      ) {
+
+        const mat3 toYIQ =
+          mat3(
+
+            0.299,
+            0.587,
+            0.114,
+
+            0.596,
+           -0.275,
+           -0.321,
+
+            0.212,
+           -0.523,
+            0.311
+
+          );
+
+
+        const mat3 toRGB =
+          mat3(
+
+            1.0,
+            0.956,
+            0.621,
+
+            1.0,
+           -0.272,
+           -0.647,
+
+            1.0,
+           -1.106,
+            1.703
+
+          );
+
+
+        vec3 yiq =
+          toYIQ *
+          color;
+
+
+        float hue =
+          atan(
+            yiq.z,
+            yiq.y
+          );
+
+
+        float chroma =
+          length(
+            yiq.yz
+          );
+
+
+        hue += angle;
+
+
+        yiq.y =
+          chroma *
+          cos(hue);
+
+
+        yiq.z =
+          chroma *
+          sin(hue);
+
+
+        return
+          clamp(
+            toRGB *
+            yiq,
+            0.0,
+            1.0
+          );
+
+      }
+
+
+      /* =======================================================
+         MAIN SHADER
+      ======================================================= */
+
+      void main() {
+
+
+        vec2 uv =
+          v_uv;
+
+
+        /* =====================================================
+           BASE FOOTAGE
+        ===================================================== */
+
+        vec3 base =
+          texture(
+            u_footage,
+            uv
+          ).rgb;
+
+
+        /* =====================================================
+           WEBCAM MOTION DIFFERENCE
+           Static webcam image disappears.
+           Only changing pixels become visible.
+        ===================================================== */
+
+        vec3 webcamNow =
+          texture(
+            u_webcam,
+            uv
+          ).rgb;
+
+
+        vec3 webcamPrevious =
+          texture(
+            u_previousWebcam,
+            uv
+          ).rgb;
+
+
+        float motionDifference =
+          length(
+            webcamNow -
+            webcamPrevious
+          );
+
+
+        float motionMask =
+          smoothstep(
+
+            0.025,
+
+            0.18,
+
+            motionDifference *
+            u_motionSensitivity
+
+          ) *
+          u_webcamActive;
+
+
+        /* =====================================================
+           SOFT WEBCAM MOTION HALO
+           Creates only a residue / aura, not a portrait
+        ===================================================== */
+
+        float haloMotion = 0.0;
+
+
+        vec2 haloOffset =
+          vec2(
+            0.006,
+            0.006
+          );
+
+
+        haloMotion +=
+          length(
+
+            texture(
+              u_webcam,
+              uv +
+              vec2(
+                haloOffset.x,
+                0.0
+              )
+            ).rgb
+
+            -
+
+            texture(
+              u_previousWebcam,
+              uv
+            ).rgb
+
+          );
+
+
+        haloMotion +=
+          length(
+
+            texture(
+              u_webcam,
+              uv +
+              vec2(
+                0.0,
+                haloOffset.y
+              )
+            ).rgb
+
+            -
+
+            texture(
+              u_previousWebcam,
+              uv
+            ).rgb
+
+          );
+
+
+        haloMotion *=
+          0.5;
+
+
+        float softHalo =
+          smoothstep(
+            0.015,
+            0.2,
+            haloMotion *
+            u_motionSensitivity
+          );
+
+
+        /* =====================================================
+           SMALL LOCAL MOUSE FIELD
+           Mouse affects only a small area
+        ===================================================== */
+
+        float mouseDistance =
+          distance(
+            uv,
+            u_mouse
+          );
+
+
+        float mouseNoise =
+          fbm(
+            uv * 24.0 +
+            u_time * 0.3
+          );
+
+
+        float irregularRadius =
+          u_mouseRadius *
+          (
+            0.65 +
+            mouseNoise *
+            0.7
+          );
+
+
+        float mouseMask =
+          1.0 -
+          smoothstep(
+
+            irregularRadius *
+            0.45,
+
+            irregularRadius,
+
+            mouseDistance
+
+          );
+
+
+        mouseMask *=
+          clamp(
+            u_mouseSpeed *
+            0.11,
+            0.0,
+            1.0
+          );
+
+
+        /* =====================================================
+           SOUND FIELD
+           Audio generates unstable global rupture
+        ===================================================== */
+
+        float soundNoise =
+          fbm(
+
+            uv * 9.0 +
+
+            vec2(
+              u_time * 0.9,
+              -u_time * 0.45
+            )
+
+          );
+
+
+        float audioField =
+          smoothstep(
+
+            0.72 -
+            u_audio * 0.34,
+
+            0.96,
+
+            soundNoise
+
+          );
+
+
+        audioField *=
+          u_audio;
+
+
+        /* =====================================================
+           COMBINED GLITCH ENERGY
+        ===================================================== */
+
+        float energy =
+          max(
+
+            mouseMask,
+
+            max(
+
+              motionMask,
+
+              audioField
+
+            )
+
+          );
+
+
+        energy =
+          clamp(
+            energy,
+            0.0,
+            1.0
+          );
+
+
+        /* =====================================================
+           ORGANIC FLOW FIELD
+           No rectangles, no polygons, no repeating geometry
+        ===================================================== */
+
+        float n1 =
+          fbm(
+
+            uv * 13.0 +
+
+            vec2(
+              u_time * 0.65,
+              -u_time * 0.23
+            )
+
+          );
+
+
+        float n2 =
+          fbm(
+
+            uv * 27.0 +
+
+            vec2(
+              -u_time * 0.35,
+              u_time * 0.71
+            )
+
+          );
+
+
+        vec2 flow =
+          vec2(
+
+            n1 - 0.5,
+
+            n2 - 0.5
+
+          );
+
+
+        flow *=
+          (
+            0.015 +
+            u_audioPeak *
+            0.09
+          );
+
+
+        flow *=
+          energy;
+
+
+        /* =====================================================
+           TEMPORAL DATAMOSH SMEAR
+           Pulls previous frame into the current frame
+        ===================================================== */
+
+        vec2 feedbackUV =
+          uv -
+
+          flow *
+          (
+            2.0 +
+            n2 * 6.0
+          );
+
+
+        feedbackUV.x +=
+
+          sin(
+
+            uv.y *
+            70.0 +
+
+            n1 *
+            18.0 +
+
+            u_time *
+            3.0
+
+          ) *
+
+          energy *
+
+          (
+            0.002 +
+            u_audio *
+            0.018
+          );
+
+
+        vec3 feedback =
+          texture(
+            u_feedback,
+            feedbackUV
+          ).rgb;
+
+
+        /* =====================================================
+           RGB CHANNEL SEPARATION
+           Each color channel samples a different position
+        ===================================================== */
+
+        vec2 chromaDirection =
+          normalize(
+
+            flow +
+
+            vec2(
+              0.0001,
+              0.0001
+            )
+
+          );
+
+
+        float chromaAmount =
+
+          energy *
+
+          (
+            0.006 +
+            u_audioPeak *
+            0.032
+          );
+
+
+        vec3 rgbSplit;
+
+
+        rgbSplit.r =
+          texture(
+
+            u_feedback,
+
+            feedbackUV +
+
+            chromaDirection *
+            chromaAmount
+
+          ).r;
+
+
+        rgbSplit.g =
+          texture(
+
+            u_feedback,
+
+            feedbackUV -
+
+            chromaDirection *
+            chromaAmount *
+            0.35
+
+          ).g;
+
+
+        rgbSplit.b =
+          texture(
+
+            u_feedback,
+
+            feedbackUV -
+
+            chromaDirection *
+            chromaAmount
+
+          ).b;
+
+
+        /* =====================================================
+           EXTREME COLOR CORRUPTION
+           Glitch areas become neon and highly saturated
+        ===================================================== */
+
+        float hueNoise =
+          fbm(
+            uv * 8.0 +
+            u_time * 0.8
+          );
+
+
+        float hueAngle =
+
+          (
+            hueNoise -
+            0.5
+          ) *
+
+          6.28318 *
+
+          (
+            0.6 +
+            u_audio *
+            2.5
+          );
+
+
+        vec3 neonFeedback =
+          hueShift(
+            rgbSplit,
+            hueAngle
+          );
+
+
+        neonFeedback =
+          saturateColor(
+
+            neonFeedback,
+
+            u_colorIntensity +
+            u_audio *
+            3.0
+
+          );
+
+
+        neonFeedback =
+          pow(
+
+            neonFeedback,
+
+            vec3(0.72)
+
+          );
+
+
+        /* =====================================================
+           WEBCAM COLOR HALO
+           Motion produces cyan / magenta / yellow residues
+        ===================================================== */
+
+        float webcamHue =
+          fbm(
+            uv * 7.0 +
+            u_time * 0.4
+          );
+
+
+        vec3 webcamHaloColor =
+          hueShift(
+
+            webcamNow,
+
+            webcamHue *
+            6.28318
+
+          );
+
+
+        webcamHaloColor =
+          saturateColor(
+            webcamHaloColor,
+            5.0
+          );
+
+
+        webcamHaloColor *=
+          (
+            softHalo *
+            u_webcamHalo
+          );
+
+
+        /* =====================================================
+           AUDIO COLOR FLASHES
+           Strong sounds create sharp neon transitions
+        ===================================================== */
+
+        vec3 audioColor =
+
+          vec3(
+
+            0.5 +
+            0.5 *
+            sin(
+              u_time * 4.7
+            ),
+
+            0.5 +
+            0.5 *
+            sin(
+              u_time * 5.9 +
+              2.1
+            ),
+
+            0.5 +
+            0.5 *
+            sin(
+              u_time * 7.3 +
+              4.2
+            )
+
+          );
+
+
+        audioColor =
+          saturateColor(
+            audioColor,
+            4.0
+          );
+
+
+        /* =====================================================
+           FINAL IMAGE MIX
+        ===================================================== */
+
+        vec3 color =
+          base;
+
+
+        /* Temporal corruption */
+
+        color =
+          mix(
+
+            color,
+
+            feedback,
+
+            energy *
+            0.35 *
+            u_feedbackAmount
+
+          );
+
+
+        /* Neon RGB datamosh */
+
+        color =
+          mix(
+
+            color,
+
+            neonFeedback,
+
+            energy *
+            (
+              0.55 +
+              u_audio *
+              0.4
+            )
+
+          );
+
+
+        /* Webcam motion halo */
+
+        color +=
+          webcamHaloColor;
+
+
+        /* Sound color rupture */
+
+        color =
+          mix(
+
+            color,
+
+            audioColor,
+
+            audioField *
+            u_audio *
+            0.32
+
+          );
+
+
+        /* =====================================================
+           FINAL SATURATION
+        ===================================================== */
+
+        float finalSaturation =
+
+          1.25 +
+
+          energy *
+          2.2 +
+
+          u_audio *
+          1.3;
+
+
+        color =
+          saturateColor(
+            color,
+            finalSaturation
+          );
+
+
+        /* =====================================================
+           FINAL CONTRAST
+        ===================================================== */
+
+        color =
+          (
+            color -
+            0.5
+          ) *
+          (
+            1.05 +
+            energy *
+            0.3
+          ) +
+          0.5;
+
+
+        outColor =
+          vec4(
+            clamp(
+              color,
+              0.0,
+              1.0
+            ),
+            1.0
+          );
+
+      }
+
+    `;
+
+
+    /* =========================================================
+       DISPLAY FRAGMENT SHADER
+       Displays the rendered feedback texture
+    ========================================================= */
+
+    const displayFragmentSource = `#version 300 es
+
+      precision highp float;
+
+      uniform sampler2D u_texture;
+
+      in vec2 v_uv;
+
+      out vec4 outColor;
+
+      void main() {
+
+        outColor =
+          texture(
+            u_texture,
+            v_uv
+          );
+
+      }
+
+    `;
+
+
+    /* =========================================================
+       SHADER COMPILER
+    ========================================================= */
+
+    function compileShader(
+      type,
+      source
+    ) {
+
+      const shader =
+        gl.createShader(type);
+
+
+      gl.shaderSource(
+        shader,
+        source
       );
 
-    }
 
-
-    /* =========================================================
-       RANDOM INTEGER HELPER
-    ========================================================= */
-
-    function randomInt(min, max) {
-
-      return Math.floor(
-        random(min, max + 1)
+      gl.compileShader(
+        shader
       );
 
-    }
 
-
-    /* =========================================================
-       RANDOM COLOR HELPER
-    ========================================================= */
-
-    function randomColor() {
-
-      return glitchColors[
-        Math.floor(
-          Math.random() *
-          glitchColors.length
+      if (
+        !gl.getShaderParameter(
+          shader,
+          gl.COMPILE_STATUS
         )
-      ];
+      ) {
+
+        console.error(
+          gl.getShaderInfoLog(
+            shader
+          )
+        );
+
+        throw new Error(
+          "Shader compilation failed"
+        );
+
+      }
+
+
+      return shader;
+
+    }
+
+
+    /* =========================================================
+       WEBGL PROGRAM CREATOR
+    ========================================================= */
+
+    function createProgram(
+      vertexSource,
+      fragmentSource
+    ) {
+
+      const program =
+        gl.createProgram();
+
+
+      gl.attachShader(
+
+        program,
+
+        compileShader(
+          gl.VERTEX_SHADER,
+          vertexSource
+        )
+
+      );
+
+
+      gl.attachShader(
+
+        program,
+
+        compileShader(
+          gl.FRAGMENT_SHADER,
+          fragmentSource
+        )
+
+      );
+
+
+      gl.linkProgram(
+        program
+      );
+
+
+      if (
+        !gl.getProgramParameter(
+          program,
+          gl.LINK_STATUS
+        )
+      ) {
+
+        console.error(
+          gl.getProgramInfoLog(
+            program
+          )
+        );
+
+        throw new Error(
+          "Program link failed"
+        );
+
+      }
+
+
+      return program;
+
+    }
+
+
+    /* =========================================================
+       CREATE WEBGL PROGRAMS
+    ========================================================= */
+
+    const glitchProgram =
+      createProgram(
+        vertexShaderSource,
+        fragmentShaderSource
+      );
+
+
+    const displayProgram =
+      createProgram(
+        vertexShaderSource,
+        displayFragmentSource
+      );
+
+
+    /* =========================================================
+       FULL-SCREEN GEOMETRY
+    ========================================================= */
+
+    const positionBuffer =
+      gl.createBuffer();
+
+
+    gl.bindBuffer(
+      gl.ARRAY_BUFFER,
+      positionBuffer
+    );
+
+
+    gl.bufferData(
+
+      gl.ARRAY_BUFFER,
+
+      new Float32Array([
+
+        -1, -1,
+
+         1, -1,
+
+        -1,  1,
+
+        -1,  1,
+
+         1, -1,
+
+         1,  1
+
+      ]),
+
+      gl.STATIC_DRAW
+
+    );
+
+
+    /* =========================================================
+       TEXTURE CREATOR
+    ========================================================= */
+
+    function createTexture() {
+
+      const texture =
+        gl.createTexture();
+
+
+      gl.bindTexture(
+        gl.TEXTURE_2D,
+        texture
+      );
+
+
+      gl.texParameteri(
+
+        gl.TEXTURE_2D,
+
+        gl.TEXTURE_MIN_FILTER,
+
+        gl.LINEAR
+
+      );
+
+
+      gl.texParameteri(
+
+        gl.TEXTURE_2D,
+
+        gl.TEXTURE_MAG_FILTER,
+
+        gl.LINEAR
+
+      );
+
+
+      gl.texParameteri(
+
+        gl.TEXTURE_2D,
+
+        gl.TEXTURE_WRAP_S,
+
+        gl.CLAMP_TO_EDGE
+
+      );
+
+
+      gl.texParameteri(
+
+        gl.TEXTURE_2D,
+
+        gl.TEXTURE_WRAP_T,
+
+        gl.CLAMP_TO_EDGE
+
+      );
+
+
+      return texture;
+
+    }
+
+
+    /* =========================================================
+       SOURCE TEXTURES
+    ========================================================= */
+
+    const footageTexture =
+      createTexture();
+
+    const webcamTexture =
+      createTexture();
+
+    const previousWebcamTexture =
+      createTexture();
+
+
+    /* =========================================================
+       FEEDBACK TEXTURES
+       Two textures alternate every frame
+    ========================================================= */
+
+    let feedbackTextureA =
+      createTexture();
+
+    let feedbackTextureB =
+      createTexture();
+
+
+    let framebufferA =
+      gl.createFramebuffer();
+
+    let framebufferB =
+      gl.createFramebuffer();
+
+
+    /* =========================================================
+       RESIZE FEEDBACK TEXTURE
+    ========================================================= */
+
+    function allocateFeedbackTexture(
+      texture
+    ) {
+
+      gl.bindTexture(
+        gl.TEXTURE_2D,
+        texture
+      );
+
+
+      gl.texImage2D(
+
+        gl.TEXTURE_2D,
+
+        0,
+
+        gl.RGBA,
+
+        canvas.width,
+
+        canvas.height,
+
+        0,
+
+        gl.RGBA,
+
+        gl.UNSIGNED_BYTE,
+
+        null
+
+      );
+
+    }
+
+
+    /* =========================================================
+       FRAMEBUFFER SETUP
+    ========================================================= */
+
+    function setupFramebuffer(
+      framebuffer,
+      texture
+    ) {
+
+      gl.bindFramebuffer(
+        gl.FRAMEBUFFER,
+        framebuffer
+      );
+
+
+      gl.framebufferTexture2D(
+
+        gl.FRAMEBUFFER,
+
+        gl.COLOR_ATTACHMENT0,
+
+        gl.TEXTURE_2D,
+
+        texture,
+
+        0
+
+      );
 
     }
 
@@ -445,64 +1737,106 @@
        CANVAS RESIZE
     ========================================================= */
 
-    function resizeCanvas() {
+    function resize() {
 
-      const width =
-        innerWidth;
-
-      const height =
-        innerHeight;
+      const dpr =
+        Math.min(
+          window.devicePixelRatio || 1,
+          1.5
+        );
 
 
       canvas.width =
-        width;
+        Math.floor(
+          innerWidth * dpr
+        );
+
 
       canvas.height =
-        height;
+        Math.floor(
+          innerHeight * dpr
+        );
 
 
-      compositeCanvas.width =
-        width;
+      footageBuffer.width =
+        canvas.width;
 
-      compositeCanvas.height =
-        height;
-
-
-      memoryCanvas.width =
-        width;
-
-      memoryCanvas.height =
-        height;
+      footageBuffer.height =
+        canvas.height;
 
 
-      haloCanvas.width =
-        width;
+      webcamBuffer.width =
+        canvas.width;
 
-      haloCanvas.height =
-        height;
+      webcamBuffer.height =
+        canvas.height;
+
+
+      previousWebcamBuffer.width =
+        canvas.width;
+
+      previousWebcamBuffer.height =
+        canvas.height;
+
+
+      allocateFeedbackTexture(
+        feedbackTextureA
+      );
+
+
+      allocateFeedbackTexture(
+        feedbackTextureB
+      );
+
+
+      setupFramebuffer(
+        framebufferA,
+        feedbackTextureA
+      );
+
+
+      setupFramebuffer(
+        framebufferB,
+        feedbackTextureB
+      );
+
+
+      gl.bindFramebuffer(
+        gl.FRAMEBUFFER,
+        null
+      );
+
+
+      gl.viewport(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
 
     }
 
 
-    resizeCanvas();
+    resize();
 
 
     addEventListener(
       "resize",
-      resizeCanvas
+      resize
     );
 
 
     /* =========================================================
        VIDEO COVER DRAWING
-       Draws video like object-fit: cover
+       Preserves aspect ratio
     ========================================================= */
 
     function drawVideoCover(
       context,
       video,
       width,
-      height
+      height,
+      mirror = false
     ) {
 
       if (
@@ -521,55 +1855,73 @@
         video.videoHeight;
 
 
-      const canvasRatio =
+      const targetRatio =
         width /
         height;
 
 
-      let sourceX = 0;
-      let sourceY = 0;
+      let sx = 0;
+      let sy = 0;
 
-      let sourceWidth =
+      let sw =
         video.videoWidth;
 
-      let sourceHeight =
+      let sh =
         video.videoHeight;
 
 
       if (
         videoRatio >
-        canvasRatio
+        targetRatio
       ) {
 
-        sourceHeight =
+        sh =
           video.videoHeight;
 
-        sourceWidth =
-          sourceHeight *
-          canvasRatio;
+        sw =
+          sh *
+          targetRatio;
 
-        sourceX =
+        sx =
           (
             video.videoWidth -
-            sourceWidth
+            sw
           ) / 2;
 
       }
 
       else {
 
-        sourceWidth =
+        sw =
           video.videoWidth;
 
-        sourceHeight =
-          sourceWidth /
-          canvasRatio;
+        sh =
+          sw /
+          targetRatio;
 
-        sourceY =
+        sy =
           (
             video.videoHeight -
-            sourceHeight
+            sh
           ) / 2;
+
+      }
+
+
+      context.save();
+
+
+      if (mirror) {
+
+        context.translate(
+          width,
+          0
+        );
+
+        context.scale(
+          -1,
+          1
+        );
 
       }
 
@@ -578,11 +1930,11 @@
 
         video,
 
-        sourceX,
-        sourceY,
+        sx,
+        sy,
 
-        sourceWidth,
-        sourceHeight,
+        sw,
+        sh,
 
         0,
         0,
@@ -591,6 +1943,9 @@
         height
 
       );
+
+
+      context.restore();
 
     }
 
@@ -632,7 +1987,7 @@
 
 
           /* =====================================================
-             AUDIO ANALYSIS
+             AUDIO ANALYSER
           ===================================================== */
 
           const AudioContext =
@@ -662,7 +2017,7 @@
 
 
           analyser.smoothingTimeConstant =
-            0.28;
+            0.18;
 
 
           source.connect(
@@ -670,15 +2025,9 @@
           );
 
 
-          timeData =
+          audioData =
             new Uint8Array(
               analyser.fftSize
-            );
-
-
-          frequencyData =
-            new Uint8Array(
-              analyser.frequencyBinCount
             );
 
 
@@ -710,349 +2059,20 @@
 
     /* =========================================================
        AUDIO ANALYSIS
-       Strong response to voice, clap and music
+       Strong reaction to sound
     ========================================================= */
 
     function updateAudio() {
 
       if (
-        !analyser
+        !analyser ||
+        !audioData
       ) {
 
-        audioLevel *= 0.9;
-        bassLevel *= 0.9;
-        audioPeak *= 0.86;
+        audioLevel *=
+          0.88;
 
-        return;
-
-      }
-
-
-      analyser.getByteTimeDomainData(
-        timeData
-      );
-
-
-      let sumSquares = 0;
-
-
-      for (
-        let i = 0;
-        i < timeData.length;
-        i++
-      ) {
-
-        const v =
-          (
-            timeData[i] -
-            128
-          ) / 128;
-
-
-        sumSquares +=
-          v * v;
-
-      }
-
-
-      const rms =
-        Math.sqrt(
-          sumSquares /
-          timeData.length
-        );
-
-
-      analyser.getByteFrequencyData(
-        frequencyData
-      );
-
-
-      let lowTotal = 0;
-
-
-      for (
-        let i = 0;
-        i < 30;
-        i++
-      ) {
-
-        lowTotal +=
-          frequencyData[i];
-
-      }
-
-
-      const bass =
-        lowTotal /
-        30 /
-        255;
-
-
-      const targetAudio =
-        Math.min(
-          1,
-          rms *
-          AUDIO_SENSITIVITY
-        );
-
-
-      const targetBass =
-        Math.min(
-          1,
-          bass * 4.2
-        );
-
-
-      audioLevel =
-        audioLevel * 0.4 +
-        targetAudio * 0.6;
-
-
-      bassLevel =
-        bassLevel * 0.45 +
-        targetBass * 0.55;
-
-
-      audioPeak =
-        Math.max(
-
-          audioLevel,
-
-          bassLevel,
-
-          audioPeak * 0.8
-
-        );
-
-    }
-
-
-    /* =========================================================
-       WEBCAM HALO PROCESSING
-       Converts webcam into a blurred ghost image
-       instead of a clear portrait
-    ========================================================= */
-
-    function buildWebcamHalo() {
-
-      haloCtx.clearRect(
-        0,
-        0,
-        haloCanvas.width,
-        haloCanvas.height
-      );
-
-
-      if (
-        !webcamActive ||
-        webcam.readyState < 2
-      ) {
-
-        return;
-
-      }
-
-
-      haloCtx.save();
-
-
-      /* Mirror webcam */
-
-      haloCtx.translate(
-        haloCanvas.width,
-        0
-      );
-
-
-      haloCtx.scale(
-        -1,
-        1
-      );
-
-
-      /* Very soft and distorted webcam */
-
-      haloCtx.filter =
-        `
-        blur(${WEBCAM_BLUR}px)
-        contrast(2.5)
-        saturate(3.5)
-        brightness(1.2)
-        `;
-
-
-      haloCtx.globalAlpha =
-        0.35;
-
-
-      drawVideoCover(
-
-        haloCtx,
-
-        webcam,
-
-        haloCanvas.width,
-
-        haloCanvas.height
-
-      );
-
-
-      haloCtx.restore();
-
-
-      /* =====================================================
-         SECOND COLOR-SHIFTED HALO
-         Creates chromatic ghosting
-      ===================================================== */
-
-      haloCtx.save();
-
-
-      haloCtx.globalCompositeOperation =
-        "screen";
-
-
-      haloCtx.globalAlpha =
-        0.18;
-
-
-      haloCtx.filter =
-        `
-        blur(${WEBCAM_BLUR + 6}px)
-        saturate(8)
-        hue-rotate(100deg)
-        contrast(2)
-        `;
-
-
-      haloCtx.translate(
-        haloCanvas.width + 8,
-        -3
-      );
-
-
-      haloCtx.scale(
-        -1,
-        1
-      );
-
-
-      drawVideoCover(
-
-        haloCtx,
-
-        webcam,
-
-        haloCanvas.width,
-
-        haloCanvas.height
-
-      );
-
-
-      haloCtx.restore();
-
-    }
-
-
-    /* =========================================================
-       FOOTAGE + WEBCAM HALO MERGE
-       Footage remains dominant
-    ========================================================= */
-
-    function buildCompositeFrame() {
-
-      compositeCtx.clearRect(
-        0,
-        0,
-        compositeCanvas.width,
-        compositeCanvas.height
-      );
-
-
-      /* =====================================================
-         MAIN FOOTAGE
-      ===================================================== */
-
-      compositeCtx.globalAlpha = 1;
-
-      compositeCtx.globalCompositeOperation =
-        "source-over";
-
-
-      compositeCtx.filter =
-        "saturate(1.35) contrast(1.08)";
-
-
-      drawVideoCover(
-
-        compositeCtx,
-
-        footage,
-
-        compositeCanvas.width,
-
-        compositeCanvas.height
-
-      );
-
-
-      compositeCtx.filter =
-        "none";
-
-
-      /* =====================================================
-         GHOST WEBCAM HALO
-      ===================================================== */
-
-      if (
-        webcamActive
-      ) {
-
-        compositeCtx.save();
-
-
-        compositeCtx.globalAlpha =
-          WEBCAM_HALO_OPACITY;
-
-
-        compositeCtx.globalCompositeOperation =
-          "screen";
-
-
-        compositeCtx.drawImage(
-
-          haloCanvas,
-
-          0,
-          0,
-
-          compositeCanvas.width,
-          compositeCanvas.height
-
-        );
-
-
-        compositeCtx.restore();
-
-      }
-
-    }
-
-
-    /* =========================================================
-       WEBCAM MOTION DETECTION
-    ========================================================= */
-
-    function detectWebcamMotion() {
-
-      if (
-        !webcamActive ||
-        webcam.readyState < 2
-      ) {
-
-        webcamMotionAmount *=
+        audioPeak *=
           0.82;
 
         return;
@@ -1060,199 +2080,66 @@
       }
 
 
-      motionCtx.save();
-
-
-      motionCtx.translate(
-        MOTION_WIDTH,
-        0
+      analyser.getByteTimeDomainData(
+        audioData
       );
 
 
-      motionCtx.scale(
-        -1,
-        1
-      );
-
-
-      motionCtx.drawImage(
-
-        webcam,
-
-        0,
-        0,
-
-        MOTION_WIDTH,
-        MOTION_HEIGHT
-
-      );
-
-
-      motionCtx.restore();
-
-
-      const imageData =
-        motionCtx.getImageData(
-
-          0,
-          0,
-
-          MOTION_WIDTH,
-          MOTION_HEIGHT
-
-        );
-
-
-      const pixels =
-        imageData.data;
-
-
-      if (
-        !previousMotionFrame
-      ) {
-
-        previousMotionFrame =
-          new Uint8ClampedArray(
-            pixels
-          );
-
-        return;
-
-      }
-
-
-      let totalDifference = 0;
-
-      let weightedX = 0;
-
-      let weightedY = 0;
+      let sum = 0;
 
 
       for (
-        let y = 0;
-        y < MOTION_HEIGHT;
-        y += 2
+        let i = 0;
+        i < audioData.length;
+        i++
       ) {
 
-        for (
-          let x = 0;
-          x < MOTION_WIDTH;
-          x += 2
-        ) {
-
-          const index =
-            (
-              y *
-              MOTION_WIDTH +
-              x
-            ) * 4;
-
-
-          const current =
-            (
-              pixels[index] +
-              pixels[index + 1] +
-              pixels[index + 2]
-            ) / 3;
-
-
-          const previous =
-            (
-              previousMotionFrame[index] +
-              previousMotionFrame[index + 1] +
-              previousMotionFrame[index + 2]
-            ) / 3;
-
-
-          const difference =
-            Math.abs(
-              current -
-              previous
-            );
-
-
-          if (
-            difference > 15
-          ) {
-
-            const weight =
-              difference - 15;
-
-
-            totalDifference +=
-              weight;
-
-
-            weightedX +=
-              x * weight;
-
-
-            weightedY +=
-              y * weight;
-
-          }
-
-        }
-
-      }
-
-
-      if (
-        totalDifference > 0
-      ) {
-
-        const x =
-          weightedX /
-          totalDifference;
-
-
-        const y =
-          weightedY /
-          totalDifference;
-
-
-        webcamMotionX =
-          webcamMotionX * 0.5 +
+        const value =
           (
-            x /
-            MOTION_WIDTH *
-            canvas.width
-          ) * 0.5;
+            audioData[i] -
+            128
+          ) / 128;
 
 
-        webcamMotionY =
-          webcamMotionY * 0.5 +
-          (
-            y /
-            MOTION_HEIGHT *
-            canvas.height
-          ) * 0.5;
-
-
-        webcamMotionAmount =
-          Math.min(
-
-            1,
-
-            webcamMotionAmount * 0.25 +
-            totalDifference /
-            7500
-
-          );
-
-      }
-
-      else {
-
-        webcamMotionAmount *=
-          0.72;
+        sum +=
+          value *
+          value;
 
       }
 
 
-      previousMotionFrame.set(
-        pixels
-      );
+      const rms =
+        Math.sqrt(
+          sum /
+          audioData.length
+        );
+
+
+      const target =
+        Math.min(
+          1,
+          rms *
+          AUDIO_SENSITIVITY
+        );
+
+
+      audioLevel =
+        audioLevel *
+        0.35 +
+
+        target *
+        0.65;
+
+
+      audioPeak =
+        Math.max(
+
+          target,
+
+          audioPeak *
+          0.80
+
+        );
 
     }
 
@@ -1266,850 +2153,622 @@
       "mousemove",
       (event) => {
 
-        mouseX =
-          event.clientX;
+        const x =
+          event.clientX /
+          innerWidth;
 
-        mouseY =
-          event.clientY;
+
+        const y =
+          1 -
+          event.clientY /
+          innerHeight;
 
 
         const dx =
-          mouseX -
-          lastMouseX;
+          x -
+          previousMouseX;
 
 
         const dy =
-          mouseY -
-          lastMouseY;
+          y -
+          previousMouseY;
 
 
         mouseSpeed =
-          Math.hypot(
-            dx,
-            dy
-          );
+          Math.sqrt(
+            dx * dx +
+            dy * dy
+          ) *
+          100;
 
 
-        lastMouseX =
-          mouseX;
+        mouseX =
+          x;
 
-        lastMouseY =
-          mouseY;
-
-
-        mouseMoving = true;
+        mouseY =
+          y;
 
 
-        clearTimeout(
-          mouseTimer
-        );
+        previousMouseX =
+          x;
 
-
-        mouseTimer =
-          setTimeout(
-            () => {
-
-              mouseMoving =
-                false;
-
-            },
-            60
-          );
+        previousMouseY =
+          y;
 
       }
     );
 
 
     /* =========================================================
-       IRREGULAR ORGANIC PATH
-       Creates unpredictable non-rectangular glitch shapes
+       UPLOAD CANVAS TO WEBGL TEXTURE
     ========================================================= */
 
-    function irregularPath(
-      context,
-      centerX,
-      centerY,
-      radius
+    function uploadTexture(
+      texture,
+      sourceCanvas
     ) {
 
-      const points =
-        randomInt(
-          7,
-          18
-        );
-
-
-      context.beginPath();
-
-
-      for (
-        let i = 0;
-        i < points;
-        i++
-      ) {
-
-        const angle =
-          (
-            Math.PI *
-            2 /
-            points
-          ) *
-          i +
-          random(
-            -0.45,
-            0.45
-          );
-
-
-        const distance =
-          radius *
-          random(
-            0.12,
-            1
-          );
-
-
-        const x =
-          centerX +
-          Math.cos(angle) *
-          distance;
-
-
-        const y =
-          centerY +
-          Math.sin(angle) *
-          distance *
-          random(
-            0.25,
-            1.2
-          );
-
-
-        if (
-          i === 0
-        ) {
-
-          context.moveTo(
-            x,
-            y
-          );
-
-        }
-
-        else {
-
-          context.lineTo(
-            x,
-            y
-          );
-
-        }
-
-      }
-
-
-      context.closePath();
-
-    }
-
-
-    /* =========================================================
-       COLOR DATAMOSH SHARD
-       Strong neon temporal fragment
-    ========================================================= */
-
-    function colorShard(
-      x,
-      y,
-      radius,
-      strength
-    ) {
-
-      ctx.save();
-
-
-      irregularPath(
-
-        ctx,
-
-        x +
-        random(
-          -radius,
-          radius
-        ),
-
-        y +
-        random(
-          -radius,
-          radius
-        ),
-
-        random(
-          radius * 0.15,
-          radius * 0.8
-        )
-
+      gl.bindTexture(
+        gl.TEXTURE_2D,
+        texture
       );
 
 
-      ctx.clip();
-
-
-      ctx.globalCompositeOperation =
-        Math.random() > 0.5
-          ? "screen"
-          : "hard-light";
-
-
-      ctx.globalAlpha =
-        random(
-          0.55,
-          0.95
-        );
-
-
-      ctx.filter =
-        `
-        saturate(${random(8,18)})
-        contrast(${random(1.6,3.4)})
-        hue-rotate(${random(0,360)}deg)
-        `;
-
-
-      ctx.drawImage(
-
-        memoryCanvas,
-
-        random(
-          -50,
-          50
-        ) *
-        strength,
-
-        random(
-          -25,
-          25
-        ) *
-        strength,
-
-        canvas.width,
-        canvas.height
-
+      gl.pixelStorei(
+        gl.UNPACK_FLIP_Y_WEBGL,
+        true
       );
 
 
-      ctx.restore();
+      gl.texImage2D(
 
-    }
-
-
-    /* =========================================================
-       NEON ORGANIC COLOR
-       Adds bright irregular color fields
-    ========================================================= */
-
-    function neonBlob(
-      x,
-      y,
-      radius
-    ) {
-
-      ctx.save();
-
-
-      irregularPath(
-
-        ctx,
-
-        x +
-        random(
-          -radius,
-          radius
-        ),
-
-        y +
-        random(
-          -radius,
-          radius
-        ),
-
-        random(
-          4,
-          radius * 0.65
-        )
-
-      );
-
-
-      ctx.globalCompositeOperation =
-        "screen";
-
-
-      ctx.globalAlpha =
-        random(
-          0.5,
-          0.95
-        );
-
-
-      ctx.fillStyle =
-        randomColor();
-
-
-      ctx.fill();
-
-
-      ctx.restore();
-
-    }
-
-
-    /* =========================================================
-       COLORED GHOST TRAIL
-       Creates displaced colorful temporal echoes
-    ========================================================= */
-
-    function colorGhost(
-      x,
-      y,
-      radius,
-      strength
-    ) {
-
-      const repeats =
-        randomInt(
-          2,
-          5
-        );
-
-
-      for (
-        let i = 0;
-        i < repeats;
-        i++
-      ) {
-
-        ctx.save();
-
-
-        irregularPath(
-
-          ctx,
-
-          x,
-
-          y,
-
-          random(
-            radius * 0.15,
-            radius * 0.75
-          )
-
-        );
-
-
-        ctx.clip();
-
-
-        ctx.globalAlpha =
-          random(
-            0.18,
-            0.48
-          );
-
-
-        ctx.globalCompositeOperation =
-          "screen";
-
-
-        ctx.filter =
-          `
-          saturate(${random(5,12)})
-          hue-rotate(${random(0,360)}deg)
-          `;
-
-
-        ctx.drawImage(
-
-          memoryCanvas,
-
-          random(
-            -25,
-            25
-          ) *
-          strength *
-          i,
-
-          random(
-            -15,
-            15
-          ) *
-          strength *
-          i,
-
-          canvas.width,
-          canvas.height
-
-        );
-
-
-        ctx.restore();
-
-      }
-
-    }
-
-
-    /* =========================================================
-       IRREGULAR GLITCH ENGINE
-       No fixed visual pattern
-    ========================================================= */
-
-    function createGlitch(
-      x,
-      y,
-      radius,
-      intensity,
-      amount
-    ) {
-
-      for (
-        let i = 0;
-        i < amount;
-        i++
-      ) {
-
-        const choice =
-          Math.random();
-
-
-        if (
-          choice < 0.42
-        ) {
-
-          colorShard(
-            x,
-            y,
-            radius,
-            intensity
-          );
-
-        }
-
-        else if (
-          choice < 0.70
-        ) {
-
-          colorGhost(
-            x,
-            y,
-            radius,
-            intensity
-          );
-
-        }
-
-        else {
-
-          neonBlob(
-            x,
-            y,
-            radius
-          );
-
-        }
-
-      }
-
-    }
-
-
-    /* =========================================================
-       MOUSE GLITCH
-    ========================================================= */
-
-    function createMouseGlitch() {
-
-      if (
-        !mouseMoving ||
-        mouseSpeed < 0.5
-      ) {
-
-        return;
-
-      }
-
-
-      const speed =
-        Math.min(
-          30,
-          mouseSpeed
-        );
-
-
-      const radius =
-        Math.min(
-
-          MOUSE_MAX_RADIUS,
-
-          MOUSE_MIN_RADIUS +
-          speed * 0.8
-
-        );
-
-
-      createGlitch(
-
-        mouseX,
-
-        mouseY,
-
-        radius,
-
-        1.3 +
-        speed * 0.04 +
-        audioLevel * 2,
-
-        Math.floor(
-          2 +
-          Math.random() * 4 +
-          audioLevel * 6
-        )
-
-      );
-
-    }
-
-
-    /* =========================================================
-       WEBCAM MOVEMENT GLITCH
-       Movement inside camera creates colored glitch
-    ========================================================= */
-
-    function createWebcamGlitch() {
-
-      if (
-        webcamMotionAmount <
-        0.02
-      ) {
-
-        return;
-
-      }
-
-
-      const radius =
-        Math.min(
-
-          MOTION_MAX_RADIUS,
-
-          MOTION_MIN_RADIUS +
-          webcamMotionAmount *
-          100
-
-        );
-
-
-      createGlitch(
-
-        webcamMotionX,
-
-        webcamMotionY,
-
-        radius,
-
-        MOSH_STRENGTH +
-        webcamMotionAmount *
-        5 +
-        audioPeak *
-        3,
-
-        Math.floor(
-
-          4 +
-          webcamMotionAmount *
-          26 +
-          audioLevel *
-          14
-
-        )
-
-      );
-
-    }
-
-
-    /* =========================================================
-       SOUND GLITCH
-       Sound creates aggressive colored disruption
-    ========================================================= */
-
-    function createSoundGlitch() {
-
-      const energy =
-        Math.max(
-          audioLevel,
-          bassLevel
-        );
-
-
-      if (
-        energy < 0.018
-      ) {
-
-        return;
-
-      }
-
-
-      const chance =
-        0.22 +
-        energy *
-        0.95;
-
-
-      if (
-        Math.random() >
-        chance
-      ) {
-
-        return;
-
-      }
-
-
-      const bursts =
-        Math.floor(
-          1 +
-          energy * 7
-        );
-
-
-      for (
-        let i = 0;
-        i < bursts;
-        i++
-      ) {
-
-        let x;
-        let y;
-
-
-        if (
-          webcamMotionAmount >
-          0.02 &&
-          Math.random() >
-          0.3
-        ) {
-
-          x =
-            webcamMotionX +
-            random(
-              -100,
-              100
-            );
-
-
-          y =
-            webcamMotionY +
-            random(
-              -100,
-              100
-            );
-
-        }
-
-        else {
-
-          x =
-            random(
-              0,
-              canvas.width
-            );
-
-
-          y =
-            random(
-              0,
-              canvas.height
-            );
-
-        }
-
-
-        createGlitch(
-
-          x,
-
-          y,
-
-          random(
-            18,
-            60 +
-            energy *
-            100
-          ),
-
-          1.5 +
-          energy *
-          6,
-
-          randomInt(
-            2,
-            8
-          )
-
-        );
-
-      }
-
-    }
-
-
-    /* =========================================================
-       TEMPORAL MEMORY UPDATE
-       Stores previous composite frames
-    ========================================================= */
-
-    function updateMemory() {
-
-      memoryCtx.save();
-
-
-      memoryCtx.globalAlpha =
-        MEMORY_AMOUNT;
-
-
-      memoryCtx.drawImage(
-
-        memoryCanvas,
-
-        random(
-          -1,
-          1
-        ),
-
-        random(
-          -1,
-          1
-        ),
-
-        memoryCanvas.width,
-        memoryCanvas.height
-
-      );
-
-
-      memoryCtx.restore();
-
-
-      memoryCtx.save();
-
-
-      memoryCtx.globalAlpha =
-        0.28;
-
-
-      memoryCtx.globalCompositeOperation =
-        "screen";
-
-
-      memoryCtx.filter =
-        "saturate(2)";
-
-
-      memoryCtx.drawImage(
-
-        compositeCanvas,
+        gl.TEXTURE_2D,
 
         0,
-        0,
 
-        memoryCanvas.width,
-        memoryCanvas.height
+        gl.RGBA,
+
+        gl.RGBA,
+
+        gl.UNSIGNED_BYTE,
+
+        sourceCanvas
 
       );
-
-
-      memoryCtx.restore();
 
     }
 
 
     /* =========================================================
-       DRAW MAIN IMAGE
-       Keeps footage dominant
+       ATTRIBUTE SETUP
     ========================================================= */
 
-    function drawBaseFrame() {
+    function setupPositionAttribute(
+      program
+    ) {
 
-      ctx.globalCompositeOperation =
-        "source-over";
-
-
-      ctx.globalAlpha = 1;
-
-
-      ctx.filter =
-        "saturate(1.45) contrast(1.1)";
+      const location =
+        gl.getAttribLocation(
+          program,
+          "a_position"
+        );
 
 
-      ctx.drawImage(
-
-        compositeCanvas,
-
-        0,
-        0,
-
-        canvas.width,
-        canvas.height
-
+      gl.bindBuffer(
+        gl.ARRAY_BUFFER,
+        positionBuffer
       );
 
 
-      ctx.filter =
-        "none";
+      gl.enableVertexAttribArray(
+        location
+      );
+
+
+      gl.vertexAttribPointer(
+
+        location,
+
+        2,
+
+        gl.FLOAT,
+
+        false,
+
+        0,
+
+        0
+
+      );
 
     }
+
+
+    /* =========================================================
+       TEXTURE BINDING
+    ========================================================= */
+
+    function bindTexture(
+      program,
+      name,
+      texture,
+      unit
+    ) {
+
+      gl.activeTexture(
+        gl.TEXTURE0 +
+        unit
+      );
+
+
+      gl.bindTexture(
+        gl.TEXTURE_2D,
+        texture
+      );
+
+
+      gl.uniform1i(
+
+        gl.getUniformLocation(
+          program,
+          name
+        ),
+
+        unit
+
+      );
+
+    }
+
+
+    /* =========================================================
+       RENDER STATE
+       Feedback textures swap every frame
+    ========================================================= */
+
+    let readTexture =
+      feedbackTextureA;
+
+    let writeTexture =
+      feedbackTextureB;
+
+
+    let readFramebuffer =
+      framebufferA;
+
+    let writeFramebuffer =
+      framebufferB;
 
 
     /* =========================================================
        MAIN ANIMATION LOOP
     ========================================================= */
 
-    function animate() {
+    function render(timeMilliseconds) {
 
-      buildWebcamHalo();
+      const time =
+        timeMilliseconds *
+        0.001;
 
-      buildCompositeFrame();
 
       updateAudio();
 
-      detectWebcamMotion();
 
-      updateMemory();
+      mouseSpeed *=
+        0.88;
 
-      drawBaseFrame();
 
-      createMouseGlitch();
+      /* =====================================================
+         UPDATE FOOTAGE FRAME
+      ===================================================== */
 
-      createWebcamGlitch();
+      footageCtx.clearRect(
+        0,
+        0,
+        footageBuffer.width,
+        footageBuffer.height
+      );
 
-      createSoundGlitch();
+
+      drawVideoCover(
+
+        footageCtx,
+
+        footage,
+
+        footageBuffer.width,
+
+        footageBuffer.height
+
+      );
+
+
+      /* =====================================================
+         UPDATE WEBCAM FRAME
+      ===================================================== */
+
+      if (
+        webcamActive &&
+        webcam.readyState >= 2
+      ) {
+
+        webcamCtx.clearRect(
+          0,
+          0,
+          webcamBuffer.width,
+          webcamBuffer.height
+        );
+
+
+        drawVideoCover(
+
+          webcamCtx,
+
+          webcam,
+
+          webcamBuffer.width,
+
+          webcamBuffer.height,
+
+          true
+
+        );
+
+      }
+
+      else {
+
+        webcamCtx.clearRect(
+          0,
+          0,
+          webcamBuffer.width,
+          webcamBuffer.height
+        );
+
+      }
+
+
+      /* =====================================================
+         UPLOAD VIDEO TEXTURES
+      ===================================================== */
+
+      uploadTexture(
+        footageTexture,
+        footageBuffer
+      );
+
+
+      uploadTexture(
+        webcamTexture,
+        webcamBuffer
+      );
+
+
+      uploadTexture(
+        previousWebcamTexture,
+        previousWebcamBuffer
+      );
+
+
+      /* =====================================================
+         RENDER GLITCH INTO FEEDBACK BUFFER
+      ===================================================== */
+
+      gl.bindFramebuffer(
+        gl.FRAMEBUFFER,
+        writeFramebuffer
+      );
+
+
+      gl.viewport(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
+
+      gl.useProgram(
+        glitchProgram
+      );
+
+
+      setupPositionAttribute(
+        glitchProgram
+      );
+
+
+      bindTexture(
+        glitchProgram,
+        "u_footage",
+        footageTexture,
+        0
+      );
+
+
+      bindTexture(
+        glitchProgram,
+        "u_webcam",
+        webcamTexture,
+        1
+      );
+
+
+      bindTexture(
+        glitchProgram,
+        "u_previousWebcam",
+        previousWebcamTexture,
+        2
+      );
+
+
+      bindTexture(
+        glitchProgram,
+        "u_feedback",
+        readTexture,
+        3
+      );
+
+
+      /* =====================================================
+         SEND INTERACTION VALUES TO SHADER
+      ===================================================== */
+
+      gl.uniform2f(
+
+        gl.getUniformLocation(
+          glitchProgram,
+          "u_resolution"
+        ),
+
+        canvas.width,
+
+        canvas.height
+
+      );
+
+
+      gl.uniform2f(
+
+        gl.getUniformLocation(
+          glitchProgram,
+          "u_mouse"
+        ),
+
+        mouseX,
+
+        mouseY
+
+      );
+
+
+      gl.uniform1f(
+
+        gl.getUniformLocation(
+          glitchProgram,
+          "u_mouseSpeed"
+        ),
+
+        mouseSpeed
+
+      );
+
+
+      gl.uniform1f(
+
+        gl.getUniformLocation(
+          glitchProgram,
+          "u_time"
+        ),
+
+        time
+
+      );
+
+
+      gl.uniform1f(
+
+        gl.getUniformLocation(
+          glitchProgram,
+          "u_audio"
+        ),
+
+        audioLevel
+
+      );
+
+
+      gl.uniform1f(
+
+        gl.getUniformLocation(
+          glitchProgram,
+          "u_audioPeak"
+        ),
+
+        audioPeak
+
+      );
+
+
+      gl.uniform1f(
+
+        gl.getUniformLocation(
+          glitchProgram,
+          "u_webcamActive"
+        ),
+
+        webcamActive
+          ? 1
+          : 0
+
+      );
+
+
+      gl.uniform1f(
+
+        gl.getUniformLocation(
+          glitchProgram,
+          "u_webcamHalo"
+        ),
+
+        WEBCAM_HALO
+
+      );
+
+
+      gl.uniform1f(
+
+        gl.getUniformLocation(
+          glitchProgram,
+          "u_motionSensitivity"
+        ),
+
+        MOTION_SENSITIVITY
+
+      );
+
+
+      gl.uniform1f(
+
+        gl.getUniformLocation(
+          glitchProgram,
+          "u_mouseRadius"
+        ),
+
+        MOUSE_RADIUS
+
+      );
+
+
+      gl.uniform1f(
+
+        gl.getUniformLocation(
+          glitchProgram,
+          "u_colorIntensity"
+        ),
+
+        COLOR_INTENSITY
+
+      );
+
+
+      gl.uniform1f(
+
+        gl.getUniformLocation(
+          glitchProgram,
+          "u_feedbackAmount"
+        ),
+
+        FEEDBACK_AMOUNT
+
+      );
+
+
+      gl.drawArrays(
+        gl.TRIANGLES,
+        0,
+        6
+      );
+
+
+      /* =====================================================
+         DISPLAY FINAL FEEDBACK TEXTURE
+      ===================================================== */
+
+      gl.bindFramebuffer(
+        gl.FRAMEBUFFER,
+        null
+      );
+
+
+      gl.useProgram(
+        displayProgram
+      );
+
+
+      setupPositionAttribute(
+        displayProgram
+      );
+
+
+      bindTexture(
+        displayProgram,
+        "u_texture",
+        writeTexture,
+        0
+      );
+
+
+      gl.drawArrays(
+        gl.TRIANGLES,
+        0,
+        6
+      );
+
+
+      /* =====================================================
+         SAVE CURRENT WEBCAM AS PREVIOUS FRAME
+      ===================================================== */
+
+      previousWebcamCtx.clearRect(
+
+        0,
+        0,
+
+        previousWebcamBuffer.width,
+        previousWebcamBuffer.height
+
+      );
+
+
+      previousWebcamCtx.drawImage(
+
+        webcamBuffer,
+
+        0,
+        0
+
+      );
+
+
+      /* =====================================================
+         SWAP TEMPORAL FEEDBACK BUFFERS
+      ===================================================== */
+
+      [
+        readTexture,
+        writeTexture
+      ] =
+      [
+        writeTexture,
+        readTexture
+      ];
+
+
+      [
+        readFramebuffer,
+        writeFramebuffer
+      ] =
+      [
+        writeFramebuffer,
+        readFramebuffer
+      ];
 
 
       requestAnimationFrame(
-        animate
+        render
       );
 
     }
 
 
     /* =========================================================
-       START INTERACTIVE SYSTEM
+       START VISUAL SYSTEM
     ========================================================= */
 
-    animate();
+    requestAnimationFrame(
+      render
+    );
 
 
   </script>
