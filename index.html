@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Async Art Project</title>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #000;
+      cursor: none;
+    }
+
+    #light {
+      position: absolute;
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      background: white;
+      filter: blur(45px);
+      opacity: 0.75;
+
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+
+      left: 50%;
+      top: 50%;
+
+      transition: width 0.3s, height 0.3s;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="light"></div>
+
+  <script>
+    const light = document.getElementById("light");
+
+    document.addEventListener("mousemove", function(event) {
+
+      light.style.left = event.clientX + "px";
+      light.style.top = event.clientY + "px";
+
+    });
+
+    document.addEventListener("mousedown", function() {
+
+      light.style.width = "350px";
+      light.style.height = "350px";
+
+    });
+
+    document.addEventListener("mouseup", function() {
+
+      light.style.width = "180px";
+      light.style.height = "180px";
+
+    });
+  </script>
+
+</body>
+
+</html>
