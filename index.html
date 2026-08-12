@@ -3,7 +3,6 @@
 
 <head>
   <meta charset="UTF-8">
-
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1.0"
@@ -12,7 +11,6 @@
   <title>Async Art Project</title>
 
   <style>
-
     * {
       margin: 0;
       padding: 0;
@@ -41,35 +39,26 @@
       position: fixed;
       top: 0;
       left: 0;
-
       width: 2px;
       height: 2px;
-
       opacity: 0.001;
-
       pointer-events: none;
     }
 
     #startButton {
       position: fixed;
-
       top: 16px;
       left: 16px;
-
       z-index: 100;
 
       padding: 9px 14px;
 
       border: 1px solid rgba(255,255,255,0.75);
-
       background: rgba(0,0,0,0.42);
-
       color: white;
 
       font-family: Arial, Helvetica, sans-serif;
-
       font-size: 10px;
-
       letter-spacing: 1.5px;
 
       cursor: pointer;
@@ -82,15 +71,16 @@
     #startButton:hover {
       opacity: 1;
     }
-
   </style>
 </head>
 
 
 <body>
 
-
-  <!-- YOUR FOOTAGE -->
+  <!-- =========================================================
+       YOUR FOOTAGE
+       The file footage.mp4 must be next to index.html
+  ========================================================== -->
 
   <video
     id="footage"
@@ -98,6 +88,7 @@
     muted
     loop
     playsinline
+    preload="auto"
   >
     <source
       src="./footage.mp4"
@@ -106,7 +97,9 @@
   </video>
 
 
-  <!-- LIVE WEBCAM -->
+  <!-- =========================================================
+       LIVE WEBCAM
+  ========================================================== -->
 
   <video
     id="webcam"
@@ -116,19 +109,25 @@
   ></video>
 
 
-  <!-- CAMERA + MICROPHONE -->
+  <!-- =========================================================
+       CAMERA + SOUND BUTTON
+  ========================================================== -->
 
   <button id="startButton">
     ENABLE CAMERA + SOUND
   </button>
 
 
-  <!-- HYDRA OUTPUT -->
+  <!-- =========================================================
+       HYDRA OUTPUT
+  ========================================================== -->
 
   <canvas id="hydraCanvas"></canvas>
 
 
-  <!-- HYDRA -->
+  <!-- =========================================================
+       HYDRA LIBRARY
+  ========================================================== -->
 
   <script src="https://unpkg.com/hydra-synth"></script>
 
@@ -136,7 +135,7 @@
   <script>
 
     /* =========================================================
-       HTML ELEMENTS
+       ELEMENTS
     ========================================================= */
 
     const canvas =
@@ -153,21 +152,18 @@
 
 
     /* =========================================================
-       INTERACTION VALUES
+       INTERACTION
     ========================================================= */
 
     let audioLevel = 0;
-
     let audioPeak = 0;
 
     let mouseX = 0.5;
-
     let mouseY = 0.5;
 
     let mouseEnergy = 0;
 
     let lastMouseX = 0.5;
-
     let lastMouseY = 0.5;
 
 
@@ -176,38 +172,39 @@
     ========================================================= */
 
     let analyser = null;
-
     let audioData = null;
 
 
     /* =========================================================
-       STATES
+       STATE
     ========================================================= */
 
-    let hydraPatchStarted = false;
-
     let cameraActive = false;
+    let hydraStarted = false;
 
 
     /* =========================================================
        VISUAL SETTINGS
+
+       Camera presence is intentionally LOW.
+       Camera distortion is intentionally HIGH.
     ========================================================= */
 
-    const AUDIO_SENSITIVITY = 18;
+    const AUDIO_SENSITIVITY = 20;
 
-    const CAMERA_PRESENCE = 0.52;
+    const CAMERA_PRESENCE = 0.16;
 
-    const CAMERA_WARP = 0.16;
+    const CAMERA_WARP = 0.32;
 
-    const FEEDBACK_AMOUNT = 0.72;
+    const FEEDBACK_AMOUNT = 0.76;
 
-    const COLOR_AMOUNT = 0.018;
+    const COLOR_AMOUNT = 0.022;
 
     const MOUSE_EFFECT = 0.045;
 
 
     /* =========================================================
-       HYDRA
+       HYDRA ENGINE
     ========================================================= */
 
     const hydra = new Hydra({
@@ -224,7 +221,7 @@
 
 
     /* =========================================================
-       RESIZE
+       RESOLUTION
     ========================================================= */
 
     function resizeHydra() {
@@ -234,6 +231,7 @@
 
       canvas.height =
         window.innerHeight;
+
 
       if (
         typeof setResolution === "function"
@@ -259,7 +257,7 @@
 
 
     /* =========================================================
-       START FOOTAGE
+       INITIALIZE YOUR FOOTAGE
     ========================================================= */
 
     async function initializeFootage() {
@@ -267,7 +265,6 @@
       try {
 
         footage.muted = true;
-
         footage.loop = true;
 
         await footage.play();
@@ -277,16 +274,14 @@
       catch(error) {
 
         console.log(
-          "Footage autoplay waiting for interaction:",
+          "Autoplay waiting for user interaction.",
           error
         );
 
       }
 
 
-      /*
-        s0 = background footage
-      */
+      /* footage becomes Hydra source 0 */
 
       s0.init({
         src: footage
@@ -294,13 +289,8 @@
 
 
       /*
-        IMPORTANT
-
-        Before webcam is active,
-        use the footage itself as s1.
-
-        This prevents Hydra from breaking
-        because s1 has no source.
+        Before webcam starts,
+        use footage as temporary s1.
       */
 
       s1.init({
@@ -308,11 +298,11 @@
       });
 
 
-      if (!hydraPatchStarted) {
+      if (!hydraStarted) {
 
         startHydraPatch();
 
-        hydraPatchStarted = true;
+        hydraStarted = true;
 
       }
 
@@ -326,11 +316,6 @@
     );
 
 
-    /*
-      In case video is already cached
-      before the event listener is attached.
-    */
-
     if (footage.readyState >= 2) {
 
       initializeFootage();
@@ -339,7 +324,26 @@
 
 
     /* =========================================================
-       MOUSE
+       VIDEO ERROR DEBUGGING
+    ========================================================= */
+
+    footage.addEventListener(
+      "error",
+      () => {
+
+        console.error(
+          "Could not load ./footage.mp4"
+        );
+
+        startButton.textContent =
+          "FOOTAGE NOT FOUND";
+
+      }
+    );
+
+
+    /* =========================================================
+       MOUSE TRACKING
     ========================================================= */
 
     window.addEventListener(
@@ -377,12 +381,9 @@
 
 
         mouseX = x;
-
         mouseY = y;
 
-
         lastMouseX = x;
-
         lastMouseY = y;
 
       }
@@ -399,6 +400,24 @@
 
         if (cameraActive) {
           return;
+        }
+
+
+        /*
+          Also try to start footage again.
+          Useful for Safari.
+        */
+
+        try {
+
+          await footage.play();
+
+        }
+
+        catch(error) {
+
+          console.log(error);
+
         }
 
 
@@ -432,8 +451,7 @@
 
 
           /*
-            s1 changes from footage fallback
-            to LIVE CAMERA
+            Replace temporary s1 with live webcam.
           */
 
           s1.init({
@@ -477,7 +495,7 @@
 
 
             analyser.smoothingTimeConstant =
-              0.12;
+              0.10;
 
 
             microphone.connect(
@@ -495,7 +513,7 @@
           catch(audioError) {
 
             console.log(
-              "Microphone analyser failed:",
+              "Audio analyser error:",
               audioError
             );
 
@@ -512,19 +530,13 @@
 
         }
 
-
         catch(error) {
 
           console.error(
-            "Camera / microphone error:",
+            "Camera error:",
             error
           );
 
-
-          /*
-            IMPORTANT:
-            Artwork continues even if camera fails.
-          */
 
           startButton.textContent =
             "CAMERA / SOUND FAILED";
@@ -547,7 +559,6 @@
       ) {
 
         audioLevel *= 0.86;
-
         audioPeak *= 0.80;
 
         mouseEnergy *= 0.88;
@@ -608,16 +619,16 @@
 
       audioLevel =
         audioLevel *
-        0.26 +
+        0.24 +
         target *
-        0.74;
+        0.76;
 
 
       audioPeak =
         Math.max(
           target,
           audioPeak *
-          0.76
+          0.74
         );
 
 
@@ -636,90 +647,124 @@
 
 
     /* =========================================================
-       MAIN HYDRA PATCH
+       HYDRA PATCH
     ========================================================= */
 
     function startHydraPatch() {
 
 
       /* =====================================================
-         CAMERA / GHOST SOURCE
+         DISTORTED CAMERA GHOST
+
+         IMPORTANT:
+         Webcam is deliberately destroyed here before
+         being mixed into the footage.
       ===================================================== */
 
       src(s1)
 
         .scale(
           () =>
-            1.015 +
-            audioLevel * 0.035
+            1.04 +
+            audioLevel * 0.06
         )
+
+
+        /* large organic deformation */
 
         .modulate(
 
           noise(
-            2.2,
-            0.045
+            1.7,
+            0.055
           )
 
             .rotate(
               () =>
-                time * 0.025
+                time * 0.035
             )
 
             .scale(
-              1.25
+              1.8
+            ),
+
+          () =>
+            0.12 +
+            audioLevel * 0.28
+        )
+
+
+        /* second irregular deformation */
+
+        .modulate(
+
+          noise(
+            4.2,
+            0.09
+          )
+
+            .rotate(
+              () =>
+                -time * 0.025
             ),
 
           () =>
             0.055 +
-            audioLevel * 0.17
+            audioPeak * 0.18
         )
+
+
+        /* color displacement */
 
         .modulateHue(
 
           noise(
-            1.6,
-            0.025
+            2.2,
+            0.04
           )
 
             .colorama(
-              0.3
+              0.7
             ),
 
           () =>
-            0.8 +
-            audioLevel * 2.8
+            1.4 +
+            audioLevel * 3.5
         )
+
 
         .colorama(
 
           () =>
-            0.012 +
-            audioLevel * 0.08
+            0.025 +
+            audioLevel * 0.11
         )
+
 
         .saturate(
 
           () =>
-            3.8 +
-            audioLevel * 5
+            5.2 +
+            audioLevel * 6
         )
+
 
         .contrast(
 
           () =>
-            1.15 +
-            audioLevel * 0.7
+            1.35 +
+            audioLevel * 0.8
         )
 
+
         .posterize(
-          12,
-          0.75
+          9,
+          0.65
         )
 
 
         /* ===================================================
-           CAMERA FEEDBACK
+           CAMERA SMEAR / MEMORY
         =================================================== */
 
         .blend(
@@ -729,73 +774,86 @@
             .scale(
 
               () =>
-                1.006 +
-                audioLevel * 0.018
+                1.012 +
+                audioLevel * 0.025
             )
 
             .rotate(
 
               () =>
-                Math.sin(time * 0.12) *
-                0.006
+                Math.sin(
+                  time * 0.15
+                ) *
+                0.012
             )
 
             .scrollX(
 
               () =>
-                Math.sin(time * 0.21) *
-                0.004
+                Math.sin(
+                  time * 0.27
+                ) *
+                0.012
             )
 
             .scrollY(
 
               () =>
-                Math.cos(time * 0.17) *
-                0.004
+                Math.cos(
+                  time * 0.19
+                ) *
+                0.009
             )
 
             .modulate(
 
               noise(
-                1.4,
-                0.02
+                2,
+                0.035
               ),
 
               () =>
-                0.015 +
-                audioPeak * 0.065
+                0.035 +
+                audioPeak * 0.12
             ),
 
           () =>
-            0.52 +
-            audioLevel * 0.22
+            0.68 +
+            audioLevel * 0.15
         )
+
 
         .out(o1);
 
 
 
       /* =====================================================
-         FOOTAGE BASE
+         YOUR FOOTAGE
+         THIS IS THE MAIN IMAGE
       ===================================================== */
 
       src(s0)
 
+
         .saturate(
-          2.4
+          2.7
         )
+
 
         .contrast(
-          1.12
+          1.15
         )
 
+
         .colorama(
-          0.006
+          0.008
         )
 
 
         /* ===================================================
-           CAMERA WARPS FOOTAGE
+           CAMERA DISTORTS FOOTAGE
+
+           Camera acts more like a FORCE than a visible layer.
         =================================================== */
 
         .modulate(
@@ -807,47 +865,67 @@
             )
 
             .contrast(
-              1.65
+              2.1
+            )
+
+            .posterize(
+              7,
+              0.6
             ),
 
-          () =>
-            CAMERA_WARP +
-            audioLevel * 0.22
+          () => {
+
+            if (cameraActive) {
+
+              return (
+                CAMERA_WARP +
+                audioLevel * 0.32
+              );
+
+            }
+
+            return 0.035;
+
+          }
+
         )
 
 
         /* ===================================================
-           ORGANIC DISTORTION
+           IRREGULAR LIQUID GLITCH
         =================================================== */
 
         .modulate(
 
           noise(
 
-            2.1,
+            2.3,
 
             () =>
-              0.018 +
-              audioLevel * 0.05
+              0.025 +
+              audioLevel * 0.075
           )
 
             .scale(
-              1.5
+              1.7
             )
 
             .rotate(
               () =>
-                time * 0.015
+                time * 0.02
             ),
 
           () =>
-            0.018 +
-            audioLevel * 0.075
+            0.035 +
+            audioLevel * 0.12
         )
 
 
         /* ===================================================
-           CAMERA + FOOTAGE MERGE
+           CAMERA GHOST
+
+           Very low visibility.
+           Most of camera influence comes from modulation above.
         =================================================== */
 
         .blend(
@@ -857,55 +935,36 @@
             .colorama(
 
               () =>
-                0.02 +
+                0.035 +
                 Math.sin(
-                  time * 0.13
+                  time * 0.17
                 ) *
-                0.015
+                0.02
             )
 
             .saturate(
 
               () =>
-                4 +
-                audioLevel * 5
+                5 +
+                audioLevel * 6
             )
 
-            .modulate(
-
-              src(s0)
-
-                .saturate(
-                  0
-                )
-
-                .contrast(
-                  1.4
-                ),
-
-              0.05
+            .contrast(
+              1.5
             ),
 
           () => {
-
-            /*
-              Before webcam activation,
-              keep ghost contribution lower.
-
-              When webcam is active,
-              merge it strongly with footage.
-            */
 
             if (cameraActive) {
 
               return (
                 CAMERA_PRESENCE +
-                audioLevel * 0.18
+                audioLevel * 0.06
               );
 
             }
 
-            return 0.12;
+            return 0.04;
 
           }
 
@@ -913,7 +972,7 @@
 
 
         /* ===================================================
-           FULL-SCENE FEEDBACK
+           TEMPORAL FEEDBACK
         =================================================== */
 
         .blend(
@@ -923,53 +982,62 @@
             .scale(
 
               () =>
-                1.003 +
-                audioLevel * 0.014
+                1.006 +
+                audioLevel * 0.022
             )
 
             .rotate(
 
               () =>
                 Math.sin(
-                  time * 0.08
+                  time * 0.1
                 ) *
-                0.004
+                0.008
+            )
+
+            .scrollX(
+
+              () =>
+                Math.sin(
+                  time * 0.13
+                ) *
+                0.005
             )
 
             .modulate(
 
               noise(
-                1.3,
-                0.015
+                1.5,
+                0.025
               ),
 
               () =>
-                0.012 +
-                audioLevel * 0.07
+                0.022 +
+                audioLevel * 0.11
             )
 
             .colorama(
 
               () =>
                 COLOR_AMOUNT +
-                audioLevel * 0.04
+                audioLevel * 0.055
             )
 
             .saturate(
 
               () =>
-                1.8 +
-                audioLevel * 3.2
+                2.2 +
+                audioLevel * 4
             ),
 
           () =>
             FEEDBACK_AMOUNT +
-            audioLevel * 0.12
+            audioLevel * 0.10
         )
 
 
         /* ===================================================
-           RED CHROMATIC BLEED
+           RED COLOR BLEED
         =================================================== */
 
         .add(
@@ -979,109 +1047,126 @@
             .scrollX(
 
               () =>
-                0.002 +
-                audioPeak * 0.018
+                0.004 +
+                audioPeak * 0.025
+            )
+
+            .scrollY(
+
+              () =>
+                audioPeak * 0.006
             )
 
             .color(
-              1.35,
-              0.08,
-              0.25
+              1.5,
+              0.04,
+              0.16
+            ),
+
+          () =>
+            0.09 +
+            audioPeak * 0.19
+        )
+
+
+        /* ===================================================
+           CYAN / BLUE COLOR BLEED
+        =================================================== */
+
+        .add(
+
+          src(o0)
+
+            .scrollX(
+
+              () =>
+                -0.005 -
+                audioPeak * 0.022
+            )
+
+            .scrollY(
+
+              () =>
+                -audioPeak * 0.005
+            )
+
+            .color(
+              0.03,
+              1.0,
+              1.55
             ),
 
           () =>
             0.08 +
-            audioPeak * 0.16
+            audioPeak * 0.18
         )
 
 
         /* ===================================================
-           CYAN CHROMATIC BLEED
-        =================================================== */
-
-        .add(
-
-          src(o0)
-
-            .scrollX(
-
-              () =>
-                -0.003 -
-                audioPeak * 0.015
-            )
-
-            .color(
-              0.05,
-              0.9,
-              1.4
-            ),
-
-          () =>
-            0.07 +
-            audioPeak * 0.15
-        )
-
-
-        /* ===================================================
-           PSYCHEDELIC COLOR
+           COLOR OVERDRIVE
         =================================================== */
 
         .colorama(
 
           () =>
-            0.008 +
-            audioLevel * 0.045 +
+            0.012 +
+            audioLevel * 0.06 +
             Math.sin(
-              time * 0.1
+              time * 0.12
             ) *
-            0.006
+            0.008
         )
+
 
         .saturate(
 
           () =>
-            2.8 +
-            audioLevel * 4.5
+            3.2 +
+            audioLevel * 5
         )
+
 
         .contrast(
 
           () =>
-            1.08 +
-            audioPeak * 0.3
+            1.10 +
+            audioPeak * 0.38
         )
+
 
         .brightness(
 
           () =>
-            0.02 +
-            audioPeak * 0.08
+            0.015 +
+            audioPeak * 0.09
         )
+
 
         .out(o0);
 
 
 
       /* =====================================================
-         LOCAL MOUSE DISTURBANCE
+         SMALL LOCAL MOUSE DISTURBANCE
       ===================================================== */
 
       noise(
-        6,
-        0.12
+        7,
+        0.15
       )
 
         .mask(
 
           shape(
-            80,
+
+            90,
 
             () =>
-              0.045 +
+              0.038 +
               mouseEnergy *
               MOUSE_EFFECT,
 
-            0.25
+            0.22
           )
 
             .scrollX(
@@ -1100,16 +1185,18 @@
 
         )
 
+
         .contrast(
-          2
+          2.4
         )
+
 
         .out(o2);
 
 
 
       /* =====================================================
-         FINAL MOUSE MODULATION
+         MOUSE ONLY AFFECTS SMALL AREA
       ===================================================== */
 
       src(o0)
@@ -1120,7 +1207,7 @@
 
           () =>
             mouseEnergy *
-            0.09
+            0.11
         )
 
         .out(o3);
@@ -1137,10 +1224,7 @@
 
 
     /* =========================================================
-       SAFARI / MOBILE FALLBACK
-
-       Clicking anywhere can help autoplay footage if browser
-       initially blocked it.
+       SAFARI AUTOPLAY FALLBACK
     ========================================================= */
 
     document.addEventListener(
@@ -1157,10 +1241,7 @@
 
           catch(error) {
 
-            console.log(
-              "Footage play failed:",
-              error
-            );
+            console.log(error);
 
           }
 
