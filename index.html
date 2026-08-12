@@ -15,7 +15,7 @@
 
     /* =========================================================
        PAGE SETUP
-       Full-screen installation environment
+       Full-screen interactive environment
     ========================================================= */
 
     * {
@@ -31,37 +31,1391 @@
       overflow: hidden;
       background: black;
       cursor: crosshair;
+      font-family: Arial, Helvetica, sans-serif;
     }
 
 
     /* =========================================================
-       HYDRA OUTPUT CANVAS
-       All final visuals appear here
+       HYDRA OUTPUT
+       Final visual appears here
     ========================================================= */
 
     #hydraCanvas {
       position: fixed;
       inset: 0;
-
       width: 100%;
       height: 100%;
-
       display: block;
     }
 
 
     /* =========================================================
-       SOURCE VIDEOS
-       They stay almost invisible but remain active
+       HIDDEN VIDEO SOURCES
+       Videos remain active but are not displayed directly
     ========================================================= */
 
     #footage,
     #webcam {
       position: fixed;
+      width: 2px;
+      height: 2px;
+      opacity: 0.001;
+      pointer-events: none;
+    }
 
-      top: 0;
-      left: 0;
 
+    /* =========================================================
+       MOUSE FIELD
+       Hidden canvas used as a Hydra modulation source
+    ========================================================= */
+
+    #mouseField {
+      position: fixed;
+      width: 2px;
+      height: 2px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+
+    /* =========================================================
+       CAMERA + SOUND BUTTON
+    ========================================================= */
+
+    #startButton {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 100;
+
+      padding: 9px 14px;
+
+      border: 1px solid rgba(255,255,255,0.75);
+
+      background: rgba(0,0,0,0.42);
+
+      color: white;
+
+      font-size: 10px;
+      letter-spacing: 1.5px;
+
+      cursor: pointer;
+    }
+
+
+    /* =========================================================
+       ACTIVE BUTTON
+    ========================================================= */
+
+    #startButton.active {
+      opacity: 0.18;
+    }
+
+  </style>
+
+</head>
+
+
+<body>
+
+
+  <!-- =========================================================
+       MAIN FOOTAGE
+       Replace this with your own footage later
+  ========================================================== -->
+
+  <video
+    id="footage"
+    autoplay
+    muted
+    loop
+    playsinline
+    crossorigin="anonymous"
+  >
+    <source
+      src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
+      type="video/mp4"
+    >
+  </video>
+
+
+  <!-- =========================================================
+       LIVE WEBCAM
+  ========================================================== -->
+
+  <video
+    id="webcam"
+    autoplay
+    muted
+    playsinline
+  ></video>
+
+
+  <!-- =========================================================
+       MOUSE FIELD SOURCE
+  ========================================================== -->
+
+  <canvas id="mouseField"></canvas>
+
+
+  <!-- =========================================================
+       CAMERA + SOUND CONTROL
+  ========================================================== -->
+
+  <button id="startButton">
+    ENABLE CAMERA + SOUND
+  </button>
+
+
+  <!-- =========================================================
+       HYDRA OUTPUT CANVAS
+  ========================================================== -->
+
+  <canvas id="hydraCanvas"></canvas>
+
+
+  <!-- =========================================================
+       HYDRA-SYNTH LIBRARY
+       Hydra runs directly inside this webpage
+  ========================================================== -->
+
+  <script src="https://unpkg.com/hydra-synth"></script>
+
+
+  <script>
+
+
+    /* =========================================================
+       HTML ELEMENT REFERENCES
+    ========================================================= */
+
+    const hydraCanvas =
+      document.getElementById("hydraCanvas");
+
+    const footage =
+      document.getElementById("footage");
+
+    const webcam =
+      document.getElementById("webcam");
+
+    const mouseCanvas =
+      document.getElementById("mouseField");
+
+    const mouseCtx =
+      mouseCanvas.getContext("2d");
+
+    const startButton =
+      document.getElementById("startButton");
+
+
+    /* =========================================================
+       INTERACTION STATE
+    ========================================================= */
+
+    let mouseX =
+      window.innerWidth / 2;
+
+    let mouseY =
+      window.innerHeight / 2;
+
+    let lastMouseX =
+      mouseX;
+
+    let lastMouseY =
+      mouseY;
+
+    let mouseEnergy = 0;
+
+
+    /* =========================================================
+       AUDIO STATE
+    ========================================================= */
+
+    let analyser = null;
+
+    let audioData = null;
+
+    let audioLevel = 0;
+
+    let audioPeak = 0;
+
+
+    /* =========================================================
+       CAMERA STATE
+    ========================================================= */
+
+    let cameraStarted = false;
+
+
+    /* =========================================================
+       FOOTAGE CONTROL
+       Higher value = footage remains more recognizable
+    ========================================================= */
+
+    const FOOTAGE_MIX = 0.62;
+
+
+    /* =========================================================
+       WEBCAM CONTROL
+       Controls how much webcam presence enters the composition
+    ========================================================= */
+
+    const CAMERA_MIX = 0.36;
+
+
+    /* =========================================================
+       CAMERA WARP
+       Controls how strongly webcam bends the footage
+    ========================================================= */
+
+    const CAMERA_WARP = 0.095;
+
+
+    /* =========================================================
+       MOUSE WARP
+       Strong visible deformation around the cursor
+    ========================================================= */
+
+    const MOUSE_WARP = 0.85;
+
+
+    /* =========================================================
+       MOUSE RADIUS
+       Size of the area affected by the cursor
+    ========================================================= */
+
+    const MOUSE_RADIUS = 175;
+
+
+    /* =========================================================
+       AUDIO SENSITIVITY
+       Higher value = stronger response to sound
+    ========================================================= */
+
+    const AUDIO_SENSITIVITY = 17;
+
+
+    /* =========================================================
+       FEEDBACK
+       Moderate value keeps trails without creating sand
+    ========================================================= */
+
+    const FEEDBACK_AMOUNT = 0.22;
+
+
+    /* =========================================================
+       HYDRA ENGINE
+    ========================================================= */
+
+    const hydra =
+      new Hydra({
+
+        canvas: hydraCanvas,
+
+        detectAudio: false,
+
+        enableStreamCapture: false,
+
+        makeGlobal: true
+
+      });
+
+
+    /* =========================================================
+       RESIZE SYSTEM
+    ========================================================= */
+
+    function resizeSystem() {
+
+      const width =
+        window.innerWidth;
+
+      const height =
+        window.innerHeight;
+
+
+      hydraCanvas.width =
+        width;
+
+      hydraCanvas.height =
+        height;
+
+
+      mouseCanvas.width =
+        width;
+
+      mouseCanvas.height =
+        height;
+
+
+      if (
+        typeof setResolution === "function"
+      ) {
+
+        setResolution(
+          width,
+          height
+        );
+
+      }
+
+    }
+
+
+    resizeSystem();
+
+
+    window.addEventListener(
+      "resize",
+      resizeSystem
+    );
+
+
+    /* =========================================================
+       FOOTAGE SOURCE
+       Hydra source s0 = main footage
+    ========================================================= */
+
+    function initFootage() {
+
+      s0.init({
+        src: footage
+      });
+
+    }
+
+
+    if (
+      footage.readyState >= 2
+    ) {
+
+      initFootage();
+
+    }
+
+    else {
+
+      footage.addEventListener(
+        "loadeddata",
+        initFootage,
+        {
+          once: true
+        }
+      );
+
+    }
+
+
+    /* =========================================================
+       MOUSE SOURCE
+       Hydra source s2 = live cursor field
+    ========================================================= */
+
+    s2.init({
+      src: mouseCanvas
+    });
+
+
+    /* =========================================================
+       MOUSE TRACKING
+       Creates strong energy from cursor movement
+    ========================================================= */
+
+    window.addEventListener(
+      "mousemove",
+      event => {
+
+        mouseX =
+          event.clientX;
+
+        mouseY =
+          event.clientY;
+
+
+        const dx =
+          mouseX -
+          lastMouseX;
+
+
+        const dy =
+          mouseY -
+          lastMouseY;
+
+
+        const speed =
+          Math.hypot(
+            dx,
+            dy
+          );
+
+
+        mouseEnergy =
+          Math.min(
+            1,
+            0.18 +
+            speed * 0.025
+          );
+
+
+        lastMouseX =
+          mouseX;
+
+        lastMouseY =
+          mouseY;
+
+      }
+    );
+
+
+    /* =========================================================
+       MOUSE FIELD DRAWING
+       Creates an irregular colored field around cursor
+    ========================================================= */
+
+    function drawMouseField() {
+
+      mouseCtx.clearRect(
+        0,
+        0,
+        mouseCanvas.width,
+        mouseCanvas.height
+      );
+
+
+      const radius =
+        MOUSE_RADIUS +
+        mouseEnergy * 100;
+
+
+      /* =====================================================
+         MAIN WHITE MODULATION FIELD
+    ===================================================== */
+
+      const gradient =
+        mouseCtx.createRadialGradient(
+
+          mouseX,
+          mouseY,
+          0,
+
+          mouseX,
+          mouseY,
+          radius
+
+        );
+
+
+      gradient.addColorStop(
+        0,
+        `rgba(
+          255,
+          255,
+          255,
+          ${0.95 * mouseEnergy}
+        )`
+      );
+
+
+      gradient.addColorStop(
+        0.22,
+        `rgba(
+          255,
+          255,
+          255,
+          ${0.80 * mouseEnergy}
+        )`
+      );
+
+
+      gradient.addColorStop(
+        0.55,
+        `rgba(
+          150,
+          150,
+          150,
+          ${0.42 * mouseEnergy}
+        )`
+      );
+
+
+      gradient.addColorStop(
+        1,
+        "rgba(0,0,0,0)"
+      );
+
+
+      mouseCtx.fillStyle =
+        gradient;
+
+
+      mouseCtx.fillRect(
+        0,
+        0,
+        mouseCanvas.width,
+        mouseCanvas.height
+      );
+
+
+      /* =====================================================
+         IRREGULAR SECONDARY FIELD
+         Prevents the mouse effect from looking circular
+    ===================================================== */
+
+      for (
+        let i = 0;
+        i < 5;
+        i++
+      ) {
+
+        const offsetX =
+          (
+            Math.random() -
+            0.5
+          ) *
+          radius *
+          0.75;
+
+
+        const offsetY =
+          (
+            Math.random() -
+            0.5
+          ) *
+          radius *
+          0.75;
+
+
+        const smallRadius =
+          radius *
+          (
+            0.15 +
+            Math.random() *
+            0.28
+          );
+
+
+        const g =
+          mouseCtx.createRadialGradient(
+
+            mouseX + offsetX,
+            mouseY + offsetY,
+            0,
+
+            mouseX + offsetX,
+            mouseY + offsetY,
+            smallRadius
+
+          );
+
+
+        g.addColorStop(
+          0,
+          `rgba(
+            255,
+            255,
+            255,
+            ${0.40 * mouseEnergy}
+          )`
+        );
+
+
+        g.addColorStop(
+          1,
+          "rgba(0,0,0,0)"
+        );
+
+
+        mouseCtx.fillStyle =
+          g;
+
+
+        mouseCtx.fillRect(
+          0,
+          0,
+          mouseCanvas.width,
+          mouseCanvas.height
+        );
+
+      }
+
+
+      /* =====================================================
+         MOUSE DECAY
+    ===================================================== */
+
+      mouseEnergy *=
+        0.94;
+
+
+      requestAnimationFrame(
+        drawMouseField
+      );
+
+    }
+
+
+    drawMouseField();
+
+
+    /* =========================================================
+       CAMERA + MICROPHONE ACTIVATION
+    ========================================================= */
+
+    startButton.addEventListener(
+      "click",
+      async () => {
+
+        if (
+          cameraStarted
+        ) {
+          return;
+        }
+
+
+        try {
+
+          const stream =
+            await navigator.mediaDevices.getUserMedia({
+
+              video: {
+                facingMode:
+                  "user"
+              },
+
+              audio: {
+                echoCancellation:
+                  false,
+
+                noiseSuppression:
+                  false,
+
+                autoGainControl:
+                  true
+              }
+
+            });
+
+
+          /* =====================================================
+             WEBCAM SOURCE
+             Hydra source s1 = live webcam
+          ===================================================== */
+
+          webcam.srcObject =
+            stream;
+
+
+          await webcam.play();
+
+
+          s1.init({
+            src: webcam
+          });
+
+
+          cameraStarted =
+            true;
+
+
+          /* =====================================================
+             MICROPHONE ANALYSER
+    ===================================================== */
+
+          const AudioContext =
+            window.AudioContext ||
+            window.webkitAudioContext;
+
+
+          const audioContext =
+            new AudioContext();
+
+
+          await audioContext.resume();
+
+
+          const microphone =
+            audioContext.createMediaStreamSource(
+              stream
+            );
+
+
+          analyser =
+            audioContext.createAnalyser();
+
+
+          analyser.fftSize =
+            512;
+
+
+          analyser.smoothingTimeConstant =
+            0.35;
+
+
+          microphone.connect(
+            analyser
+          );
+
+
+          audioData =
+            new Uint8Array(
+              analyser.fftSize
+            );
+
+
+          startButton.textContent =
+            "CAMERA + SOUND ACTIVE";
+
+
+          startButton.classList.add(
+            "active"
+          );
+
+
+          startHydraPatch();
+
+        }
+
+        catch(error) {
+
+          console.error(error);
+
+
+          startButton.textContent =
+            "CAMERA / SOUND FAILED";
+
+        }
+
+      }
+    );
+
+
+    /* =========================================================
+       AUDIO ANALYSIS
+       Produces smooth reactive energy
+    ========================================================= */
+
+    function updateAudio() {
+
+      if (
+        !analyser ||
+        !audioData
+      ) {
+
+        audioLevel *=
+          0.9;
+
+        audioPeak *=
+          0.86;
+
+
+        requestAnimationFrame(
+          updateAudio
+        );
+
+        return;
+
+      }
+
+
+      analyser.getByteTimeDomainData(
+        audioData
+      );
+
+
+      let sum = 0;
+
+
+      for (
+        let i = 0;
+        i < audioData.length;
+        i++
+      ) {
+
+        const value =
+          (
+            audioData[i] -
+            128
+          ) /
+          128;
+
+
+        sum +=
+          value *
+          value;
+
+      }
+
+
+      const rms =
+        Math.sqrt(
+          sum /
+          audioData.length
+        );
+
+
+      const target =
+        Math.min(
+          1,
+          rms *
+          AUDIO_SENSITIVITY
+        );
+
+
+      audioLevel =
+        audioLevel *
+        0.52 +
+        target *
+        0.48;
+
+
+      audioPeak =
+        Math.max(
+
+          target,
+
+          audioPeak *
+          0.88
+
+        );
+
+
+      requestAnimationFrame(
+        updateAudio
+      );
+
+    }
+
+
+    updateAudio();
+
+
+    /* =========================================================
+       MAIN HYDRA PATCH
+       Footage remains visible while webcam, color,
+       sound and mouse reshape it
+    ========================================================= */
+
+    function startHydraPatch() {
+
+
+      /* =====================================================
+         WEBCAM LIQUID SOURCE
+         o1 = soft psychedelic camera texture
+    ===================================================== */
+
+      src(s1)
+
+        .scale(
+
+          () =>
+            1.012 +
+            audioLevel *
+            0.012
+
+        )
+
+        .modulate(
+
+          osc(
+            1.3,
+            0.015,
+            0.4
+          )
+
+            .rotate(
+              () =>
+                Math.sin(
+                  time * 0.08
+                ) *
+                0.15
+            ),
+
+          () =>
+            0.018 +
+            audioLevel *
+            0.045
+
+        )
+
+
+        /* ===================================================
+           CAMERA COLOR PALETTE
+           Adds cyan, magenta, green, orange and violet drift
+    =================================================== */
+
+        .colorama(
+
+          () =>
+            0.018 +
+            Math.sin(
+              time * 0.13
+            ) *
+            0.014 +
+            audioLevel *
+            0.035
+
+        )
+
+        .saturate(
+
+          () =>
+            2.8 +
+            audioLevel *
+            3
+
+        )
+
+        .contrast(
+          1.08
+        )
+
+
+        /* ===================================================
+           SOFT CAMERA FEEDBACK
+    =================================================== */
+
+        .blend(
+
+          src(o1)
+
+            .scale(
+              1.002
+            )
+
+            .scrollX(
+
+              () =>
+                Math.sin(
+                  time * 0.11
+                ) *
+                0.002
+
+            )
+
+            .scrollY(
+
+              () =>
+                Math.cos(
+                  time * 0.09
+                ) *
+                0.002
+
+            ),
+
+          () =>
+            0.12 +
+            audioLevel *
+            0.08
+
+        )
+
+        .out(o1);
+
+
+
+      /* =====================================================
+         COLOR SOURCE A
+         Cyan / electric blue
+    ===================================================== */
+
+      osc(
+        2,
+        0.015,
+        0.6
+      )
+
+        .color(
+          0.0,
+          0.75,
+          1.4
+        )
+
+        .rotate(
+          0.2
+        )
+
+        .out(o2);
+
+
+
+      /* =====================================================
+         COLOR SOURCE B
+         Magenta / orange / acid-green variation
+    ===================================================== */
+
+      osc(
+        1.35,
+        -0.012,
+        1.4
+      )
+
+        .colorama(
+          0.35
+        )
+
+        .saturate(
+          3.5
+        )
+
+        .out(o3);
+
+
+
+      /* =====================================================
+         MAIN FOOTAGE
+         Footage is the dominant foundation
+    ===================================================== */
+
+      src(s0)
+
+        .saturate(
+
+          () =>
+            1.75 +
+            audioLevel *
+            0.9
+
+        )
+
+        .contrast(
+          1.05
+        )
+
+        .brightness(
+          0.01
+        )
+
+
+        /* ===================================================
+           SUBTLE LIQUID MOVEMENT
+           Footage remains readable
+    =================================================== */
+
+        .modulate(
+
+          osc(
+            1.1,
+            0.01,
+            0.2
+          )
+
+            .rotate(
+              () =>
+                Math.sin(
+                  time * 0.05
+                ) *
+                0.18
+            ),
+
+          () =>
+            0.006 +
+            audioLevel *
+            0.018
+
+        )
+
+
+        /* ===================================================
+           WEBCAM WARPS FOOTAGE
+    =================================================== */
+
+        .modulate(
+
+          src(o1)
+
+            .saturate(
+              0
+            )
+
+            .contrast(
+              1.2
+            ),
+
+          () =>
+            CAMERA_WARP +
+            audioLevel *
+            0.05
+
+        )
+
+
+        /* ===================================================
+           WEBCAM MERGE
+    =================================================== */
+
+        .blend(
+
+          src(o1)
+
+            .saturate(
+              2.5
+            ),
+
+          () =>
+            CAMERA_MIX +
+            audioLevel *
+            0.05
+
+        )
+
+
+        /* ===================================================
+           CYAN COLOR INJECTION
+    =================================================== */
+
+        .blend(
+
+          src(o2)
+
+            .modulate(
+
+              src(o1),
+
+              0.045
+            ),
+
+          () =>
+            0.06 +
+            audioLevel *
+            0.06
+
+        )
+
+
+        /* ===================================================
+           MAGENTA / ORANGE / GREEN COLOR INJECTION
+    =================================================== */
+
+        .blend(
+
+          src(o3)
+
+            .modulate(
+
+              src(o1),
+
+              0.035
+            ),
+
+          () =>
+            0.05 +
+            audioLevel *
+            0.07
+
+        )
+
+
+        /* ===================================================
+           TEMPORAL FEEDBACK
+           Small enough to avoid sandy texture
+    =================================================== */
+
+        .blend(
+
+          src(o0)
+
+            .scale(
+              1.0015
+            )
+
+            .scrollX(
+
+              () =>
+                Math.sin(
+                  time * 0.09
+                ) *
+                0.0015
+
+            )
+
+            .scrollY(
+
+              () =>
+                Math.cos(
+                  time * 0.07
+                ) *
+                0.0015
+
+            )
+
+            .colorama(
+              0.004
+            ),
+
+          () =>
+            FEEDBACK_AMOUNT +
+            audioLevel *
+            0.05
+
+        )
+
+
+        /* ===================================================
+           PSYCHEDELIC COLOR DRIFT
+    =================================================== */
+
+        .colorama(
+
+          () =>
+            0.004 +
+            Math.sin(
+              time * 0.075
+            ) *
+            0.005 +
+            audioLevel *
+            0.012
+
+        )
+
+        .out(o0);
+
+
+
+      /* =====================================================
+         MOUSE FIELD
+         s2 is the real mouse position canvas
+    ===================================================== */
+
+      src(s2)
+
+        .contrast(
+          1.6
+        )
+
+        .modulate(
+
+          osc(
+            2.5,
+            0.02,
+            0.4
+          )
+
+            .rotate(
+              () =>
+                time *
+                0.015
+            ),
+
+          () =>
+            mouseEnergy *
+            0.12
+
+        )
+
+        .out(o2);
+
+
+
+      /* =====================================================
+         STRONG MOUSE DEFORMATION
+         Cursor produces a visible liquid pull
+    ===================================================== */
+
+      src(o0)
+
+        .modulate(
+
+          src(o2),
+
+          () =>
+            0.08 +
+            mouseEnergy *
+            MOUSE_WARP
+
+        )
+
+
+        /* ===================================================
+           MOUSE COLOR SHIFT
+           Mouse also changes local color
+    =================================================== */
+
+        .blend(
+
+          src(o0)
+
+            .modulateHue(
+
+              src(o2),
+
+              () =>
+                0.8 +
+                mouseEnergy *
+                2.4
+
+            )
+
+            .colorama(
+
+              () =>
+                0.025 +
+                mouseEnergy *
+                0.065
+
+            )
+
+            .saturate(
+
+              () =>
+                1.3 +
+                mouseEnergy *
+                2.5
+
+            ),
+
+          () =>
+            0.08 +
+            mouseEnergy *
+            0.28
+
+        )
+
+        .out(o3);
+
+
+
+      /* =====================================================
+         FOOTAGE REINFORCEMENT
+         Keeps original footage clearly present
+    ===================================================== */
+
+      src(o3)
+
+        .blend(
+
+          src(s0)
+
+            .saturate(
+              1.45
+            )
+
+            .contrast(
+              1.02
+            ),
+
+          () =>
+            1.0 -
+            FOOTAGE_MIX
+
+        )
+
+        .out(o3);
+
+
+
+      /* =====================================================
+         FINAL OUTPUT
+    ===================================================== */
+
+      render(o3);
+
+    }
+
+  </script>
+
+</body>
+
+</html>
       width: 2px;
       height: 2px;
 
