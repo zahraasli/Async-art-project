@@ -2,6 +2,7 @@
 <html lang="en">
 
 <head>
+
   <meta charset="UTF-8">
 
   <meta
@@ -9,12 +10,14 @@
     content="width=device-width, initial-scale=1.0"
   >
 
-  <title>Hydra Test</title>
+  <title>Async Art Project</title>
+
 
   <style>
 
     /* =========================================================
        PAGE SETUP
+       Full-screen interactive installation
     ========================================================= */
 
     * {
@@ -23,23 +26,120 @@
       box-sizing: border-box;
     }
 
+
     html,
     body {
       width: 100%;
       height: 100%;
+
       overflow: hidden;
+
       background: black;
+
+      cursor: crosshair;
+
+      font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
     }
 
 
     /* =========================================================
-       HYDRA CANVAS
+       HYDRA OUTPUT
     ========================================================= */
 
     #hydraCanvas {
+      position: fixed;
+
+      inset: 0;
+
       width: 100%;
       height: 100%;
+
       display: block;
+    }
+
+
+    /* =========================================================
+       HIDDEN VIDEO SOURCES
+    ========================================================= */
+
+    #footage,
+    #webcam {
+      position: fixed;
+
+      width: 2px;
+      height: 2px;
+
+      opacity: 0.001;
+
+      pointer-events: none;
+    }
+
+
+    /* =========================================================
+       CAMERA BUTTON
+    ========================================================= */
+
+    #startButton {
+      position: fixed;
+
+      top: 16px;
+      left: 16px;
+
+      z-index: 100;
+
+      padding: 9px 14px;
+
+      border:
+        1px solid
+        rgba(255,255,255,0.75);
+
+      background:
+        rgba(0,0,0,0.45);
+
+      color: white;
+
+      font-size: 10px;
+
+      letter-spacing: 1.5px;
+
+      cursor: pointer;
+    }
+
+
+    /* =========================================================
+       ACTIVE BUTTON
+    ========================================================= */
+
+    #startButton.active {
+      opacity: 0.22;
+    }
+
+
+    /* =========================================================
+       DEBUG LABEL
+       Shows interaction values while testing
+    ========================================================= */
+
+    #debug {
+      position: fixed;
+
+      left: 16px;
+      bottom: 16px;
+
+      z-index: 100;
+
+      color: white;
+
+      font-family: monospace;
+
+      font-size: 11px;
+
+      opacity: 0.7;
+
+      pointer-events: none;
     }
 
   </style>
@@ -49,30 +149,143 @@
 
 <body>
 
+
+  <!-- =========================================================
+       MAIN FOOTAGE
+    ========================================================== -->
+
+  <video
+    id="footage"
+    autoplay
+    muted
+    loop
+    playsinline
+    crossorigin="anonymous"
+  >
+
+    <source
+      src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
+      type="video/mp4"
+    >
+
+  </video>
+
+
+  <!-- =========================================================
+       LIVE WEBCAM
+    ========================================================== -->
+
+  <video
+    id="webcam"
+    autoplay
+    muted
+    playsinline
+  ></video>
+
+
+  <!-- =========================================================
+       CAMERA + SOUND CONTROL
+    ========================================================== -->
+
+  <button id="startButton">
+    ENABLE CAMERA + SOUND
+  </button>
+
+
+  <!-- =========================================================
+       DEBUG INFORMATION
+    ========================================================== -->
+
+  <div id="debug">
+    mouse: 0 | audio: 0 | camera: off
+  </div>
+
+
   <!-- =========================================================
        HYDRA OUTPUT
-  ========================================================== -->
+    ========================================================== -->
 
   <canvas id="hydraCanvas"></canvas>
 
 
   <!-- =========================================================
-       HYDRA-SYNTH LIBRARY
-       Official webpage bundle
-  ========================================================== -->
+       HYDRA LIBRARY
+       Stable CDN bundle
+    ========================================================== -->
 
-  <script src="https://cdn.jsdelivr.net/npm/hydra-synth/dist/hydra-synth.js"></script>
+  <script
+    src="https://cdn.jsdelivr.net/npm/hydra-synth/dist/hydra-synth.js">
+  </script>
 
 
   <script>
 
+
     /* =========================================================
-       HYDRA STARTUP
+       HTML ELEMENT REFERENCES
     ========================================================= */
 
     const canvas =
-      document.getElementById("hydraCanvas");
+      document.getElementById(
+        "hydraCanvas"
+      );
 
+
+    const footage =
+      document.getElementById(
+        "footage"
+      );
+
+
+    const webcam =
+      document.getElementById(
+        "webcam"
+      );
+
+
+    const startButton =
+      document.getElementById(
+        "startButton"
+      );
+
+
+    const debug =
+      document.getElementById(
+        "debug"
+      );
+
+
+    /* =========================================================
+       INTERACTION STATE
+    ========================================================= */
+
+    let cameraActive = false;
+
+    let mouseX = 0.5;
+
+    let mouseY = 0.5;
+
+    let mouseSpeed = 0;
+
+    let previousMouseX = 0.5;
+
+    let previousMouseY = 0.5;
+
+
+    /* =========================================================
+       AUDIO STATE
+    ========================================================= */
+
+    let analyser = null;
+
+    let audioData = null;
+
+    let audioLevel = 0;
+
+
+    /* =========================================================
+       HYDRA ENGINE
+    ========================================================= */
 
     const hydra =
       new Hydra({
@@ -81,38 +294,875 @@
 
         detectAudio: false,
 
+        enableStreamCapture: false,
+
         makeGlobal: true
 
       });
 
 
     /* =========================================================
-       HYDRA TEST VISUAL
-       If Hydra works, you MUST see moving colors
+       SCREEN RESOLUTION
     ========================================================= */
 
-    osc(
-      8,
-      0.1,
-      1.2
-    )
+    function resizeHydra() {
 
-      .colorama(
-        0.25
-      )
+      setResolution(
+        window.innerWidth,
+        window.innerHeight
+      );
 
-      .out();
+    }
+
+
+    resizeHydra();
+
+
+    window.addEventListener(
+      "resize",
+      resizeHydra
+    );
 
 
     /* =========================================================
-       DEBUG MESSAGE
+       FOOTAGE INITIALIZATION
+       Footage is loaded immediately as s0
+    ========================================================= */
+
+    function initializeFootage() {
+
+      s0.init({
+        src: footage
+      });
+
+
+      footage.play()
+        .catch(
+          error => {
+            console.log(error);
+          }
+        );
+
+
+      console.log(
+        "FOOTAGE READY"
+      );
+
+    }
+
+
+    if (
+      footage.readyState >= 2
+    ) {
+
+      initializeFootage();
+
+    }
+
+    else {
+
+      footage.addEventListener(
+        "loadeddata",
+        initializeFootage,
+        {
+          once: true
+        }
+      );
+
+    }
+
+
+    /* =========================================================
+       MOUSE TRACKING
+       Mouse speed directly controls distortion strength
+    ========================================================= */
+
+    window.addEventListener(
+      "mousemove",
+      event => {
+
+        const x =
+          event.clientX /
+          window.innerWidth;
+
+
+        const y =
+          event.clientY /
+          window.innerHeight;
+
+
+        const dx =
+          x -
+          previousMouseX;
+
+
+        const dy =
+          y -
+          previousMouseY;
+
+
+        mouseSpeed =
+          Math.min(
+
+            1,
+
+            Math.hypot(
+              dx,
+              dy
+            ) * 35
+
+          );
+
+
+        mouseX = x;
+
+        mouseY = y;
+
+
+        previousMouseX = x;
+
+        previousMouseY = y;
+
+      }
+    );
+
+
+    /* =========================================================
+       CAMERA + MICROPHONE ACTIVATION
+    ========================================================= */
+
+    startButton.addEventListener(
+      "click",
+      async () => {
+
+        if (
+          cameraActive
+        ) {
+          return;
+        }
+
+
+        try {
+
+          const stream =
+            await navigator.mediaDevices.getUserMedia({
+
+              video: {
+                facingMode: "user"
+              },
+
+              audio: true
+
+            });
+
+
+          /* =====================================================
+             WEBCAM INITIALIZATION
+             Webcam becomes Hydra source s1
+          ===================================================== */
+
+          webcam.srcObject =
+            stream;
+
+
+          await webcam.play();
+
+
+          s1.init({
+            src: webcam
+          });
+
+
+          cameraActive =
+            true;
+
+
+          /* =====================================================
+             MICROPHONE INITIALIZATION
+          ===================================================== */
+
+          const AudioContext =
+            window.AudioContext ||
+            window.webkitAudioContext;
+
+
+          const audioContext =
+            new AudioContext();
+
+
+          await audioContext.resume();
+
+
+          const source =
+            audioContext.createMediaStreamSource(
+              stream
+            );
+
+
+          analyser =
+            audioContext.createAnalyser();
+
+
+          analyser.fftSize =
+            512;
+
+
+          analyser.smoothingTimeConstant =
+            0.35;
+
+
+          source.connect(
+            analyser
+          );
+
+
+          audioData =
+            new Uint8Array(
+              analyser.fftSize
+            );
+
+
+          startButton.textContent =
+            "CAMERA + SOUND ACTIVE";
+
+
+          startButton.classList.add(
+            "active"
+          );
+
+
+          console.log(
+            "CAMERA READY"
+          );
+
+        }
+
+        catch(error) {
+
+          console.error(
+            error
+          );
+
+
+          startButton.textContent =
+            "CAMERA FAILED";
+
+        }
+
+      }
+    );
+
+
+    /* =========================================================
+       AUDIO ANALYSIS
+    ========================================================= */
+
+    function updateAudio() {
+
+      if (
+        analyser &&
+        audioData
+      ) {
+
+        analyser.getByteTimeDomainData(
+          audioData
+        );
+
+
+        let total = 0;
+
+
+        for (
+          let i = 0;
+          i < audioData.length;
+          i++
+        ) {
+
+          const value =
+            (
+              audioData[i] -
+              128
+            ) / 128;
+
+
+          total +=
+            value * value;
+
+        }
+
+
+        const rms =
+          Math.sqrt(
+
+            total /
+            audioData.length
+
+          );
+
+
+        const target =
+          Math.min(
+            1,
+            rms * 18
+          );
+
+
+        audioLevel =
+          audioLevel *
+          0.55 +
+          target *
+          0.45;
+
+      }
+
+      else {
+
+        audioLevel *=
+          0.9;
+
+      }
+
+
+      /* =====================================================
+         MOUSE DECAY
+      ===================================================== */
+
+      mouseSpeed *=
+        0.91;
+
+
+      /* =====================================================
+         DEBUG VALUES
+         Remove later
+      ===================================================== */
+
+      debug.textContent =
+
+        "mouse: " +
+        mouseSpeed.toFixed(2) +
+
+        " | audio: " +
+        audioLevel.toFixed(2) +
+
+        " | camera: " +
+        (
+          cameraActive
+            ? "on"
+            : "off"
+        );
+
+
+      requestAnimationFrame(
+        updateAudio
+      );
+
+    }
+
+
+    updateAudio();
+
+
+    /* =========================================================
+       WEBCAM PSYCHEDELIC GHOST — o1
+
+       IMPORTANT:
+       Webcam is not simply layered over footage.
+
+       It is:
+       warped
+       color-shifted
+       saturated
+       fed back into itself
+    ========================================================= */
+
+    src(s1)
+
+      /* =====================================================
+         CAMERA LIQUID WARP
+      ===================================================== */
+
+      .modulate(
+
+        osc(
+          1.5,
+          0.02,
+          0.5
+        )
+
+          .rotate(
+            () =>
+              time * 0.03
+          ),
+
+        () =>
+          cameraActive
+            ? 0.035 +
+              audioLevel * 0.12
+            : 0
+
+      )
+
+
+      /* =====================================================
+         CAMERA COLOR DRIFT
+      ===================================================== */
+
+      .colorama(
+
+        () =>
+          0.015 +
+          Math.sin(
+            time * 0.13
+          ) *
+          0.012 +
+          audioLevel *
+          0.07
+
+      )
+
+
+      .saturate(
+
+        () =>
+          3 +
+          audioLevel * 4
+
+      )
+
+
+      .contrast(
+        1.12
+      )
+
+
+      /* =====================================================
+         CAMERA FEEDBACK TRAIL
+      ===================================================== */
+
+      .blend(
+
+        src(o1)
+
+          .scale(
+
+            () =>
+              1.003 +
+              audioLevel *
+              0.01
+
+          )
+
+          .scrollX(
+
+            () =>
+              Math.sin(
+                time * 0.1
+              ) *
+              0.003
+
+          )
+
+          .scrollY(
+
+            () =>
+              Math.cos(
+                time * 0.08
+              ) *
+              0.003
+
+          ),
+
+        () =>
+          cameraActive
+            ? 0.30 +
+              audioLevel * 0.15
+            : 0
+
+      )
+
+
+      .out(o1);
+
+
+
+    /* =========================================================
+       MAIN FOOTAGE + WEBCAM COMPOSITION — o0
+    ========================================================= */
+
+    src(s0)
+
+
+      /* =====================================================
+         FOOTAGE COLOR
+         Keeps footage clearly visible
+      ===================================================== */
+
+      .saturate(
+        1.8
+      )
+
+
+      .contrast(
+        1.05
+      )
+
+
+      /* =====================================================
+         FOOTAGE BREATHING
+      ===================================================== */
+
+      .modulate(
+
+        osc(
+          1.2,
+          0.01,
+          0.2
+        )
+
+          .rotate(
+
+            () =>
+              Math.sin(
+                time * 0.06
+              ) * 0.15
+
+          ),
+
+        () =>
+          0.008 +
+          audioLevel *
+          0.035
+
+      )
+
+
+      /* =====================================================
+         WEBCAM WARPS FOOTAGE
+
+         This is the important part:
+         the webcam becomes geometry,
+         not simply another transparent picture
+      ===================================================== */
+
+      .modulate(
+
+        src(o1)
+
+          .saturate(
+            0
+          )
+
+          .contrast(
+            1.4
+          ),
+
+        () =>
+          cameraActive
+            ? 0.12 +
+              audioLevel *
+              0.15
+            : 0
+
+      )
+
+
+      /* =====================================================
+         WEBCAM MERGES INTO FOOTAGE
+      ===================================================== */
+
+      .blend(
+
+        src(o1)
+
+          .colorama(
+
+            () =>
+              0.02 +
+              audioLevel *
+              0.05
+
+          )
+
+          .saturate(
+
+            () =>
+              3 +
+              audioLevel *
+              3
+
+          ),
+
+        () =>
+          cameraActive
+            ? 0.38 +
+              audioLevel *
+              0.12
+            : 0
+
+      )
+
+
+      /* =====================================================
+         MAGENTA COLOR BLEED
+      ===================================================== */
+
+      .add(
+
+        src(o0)
+
+          .scrollX(
+
+            () =>
+              0.003 +
+              audioLevel *
+              0.012
+
+          )
+
+          .color(
+            1.1,
+            0.05,
+            0.75
+          ),
+
+        0.07
+
+      )
+
+
+      /* =====================================================
+         CYAN COLOR BLEED
+      ===================================================== */
+
+      .add(
+
+        src(o0)
+
+          .scrollX(
+
+            () =>
+              -0.004 -
+              audioLevel *
+              0.012
+
+          )
+
+          .color(
+            0.05,
+            0.9,
+            1.25
+          ),
+
+        0.07
+
+      )
+
+
+      /* =====================================================
+         TEMPORAL FEEDBACK
+      ===================================================== */
+
+      .blend(
+
+        src(o0)
+
+          .scale(
+
+            () =>
+              1.002 +
+              audioLevel *
+              0.006
+
+          )
+
+          .rotate(
+
+            () =>
+              Math.sin(
+                time * 0.08
+              ) *
+              0.003
+
+          ),
+
+        () =>
+          0.22 +
+          audioLevel *
+          0.10
+
+      )
+
+
+      /* =====================================================
+         GLOBAL PSYCHEDELIC COLOR
+      ===================================================== */
+
+      .colorama(
+
+        () =>
+          0.006 +
+          Math.sin(
+            time * 0.09
+          ) *
+          0.005 +
+          audioLevel *
+          0.025
+
+      )
+
+
+      .out(o0);
+
+
+
+    /* =========================================================
+       STRONG MOUSE EFFECT — o2
+
+       IMPORTANT:
+       No hidden mouse canvas.
+       No shape mask.
+       No s2.
+
+       Mouse values directly change Hydra parameters.
+       This guarantees a visible response.
+    ========================================================= */
+
+    src(o0)
+
+
+      /* =====================================================
+         MOUSE ZOOM / PULL
+
+         Fast mouse movement physically pulls
+         the entire image slightly toward/away
+      ===================================================== */
+
+      .scale(
+
+        () =>
+          1 +
+          mouseSpeed *
+          0.08
+
+      )
+
+
+      /* =====================================================
+         MOUSE HORIZONTAL DRAG
+      ===================================================== */
+
+      .scrollX(
+
+        () =>
+          (
+            mouseX -
+            0.5
+          ) *
+          mouseSpeed *
+          0.08
+
+      )
+
+
+      /* =====================================================
+         MOUSE VERTICAL DRAG
+      ===================================================== */
+
+      .scrollY(
+
+        () =>
+          (
+            mouseY -
+            0.5
+          ) *
+          mouseSpeed *
+          0.08
+
+      )
+
+
+      /* =====================================================
+         MOUSE LIQUID DISTORTION
+      ===================================================== */
+
+      .modulate(
+
+        osc(
+
+          () =>
+            1.5 +
+            mouseX * 4,
+
+          () =>
+            0.01 +
+            mouseSpeed *
+            0.08,
+
+          () =>
+            mouseY * 2
+
+        )
+
+          .rotate(
+
+            () =>
+              (
+                mouseX -
+                0.5
+              ) *
+              2
+
+          ),
+
+        () =>
+          mouseSpeed *
+          0.35
+
+      )
+
+
+      /* =====================================================
+         MOUSE COLOR SHIFT
+      ===================================================== */
+
+      .colorama(
+
+        () =>
+          mouseSpeed *
+          0.12
+
+      )
+
+
+      .saturate(
+
+        () =>
+          1 +
+          mouseSpeed *
+          2.5
+
+      )
+
+
+      .out(o2);
+
+
+
+    /* =========================================================
+       FINAL OUTPUT
+    ========================================================= */
+
+    render(o2);
+
+
+    /* =========================================================
+       STARTUP TEST
     ========================================================= */
 
     console.log(
-      "HYDRA TEST:",
-      typeof Hydra,
-      typeof osc
+      "HYDRA PATCH RUNNING"
     );
+
 
   </script>
 
