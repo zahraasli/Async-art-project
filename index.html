@@ -1,8 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
   <title>Async Art Project</title>
 
   <style>
@@ -12,32 +18,43 @@
       box-sizing: border-box;
     }
 
-    html, body {
+    html,
+    body {
       width: 100%;
       height: 100%;
       overflow: hidden;
       background: #000;
+    }
+
+    body {
+      cursor: crosshair;
       font-family: Arial, Helvetica, sans-serif;
     }
 
-    #output {
+    #hydraCanvas {
       position: fixed;
       inset: 0;
-      width: 100vw;
-      height: 100vh;
+      width: 100%;
+      height: 100%;
       display: block;
       background: #000;
-      cursor: crosshair;
+      z-index: 1;
     }
+
+    /*
+      These media elements are sources for Hydra.
+      They should not appear directly on the page.
+    */
 
     #footage,
     #webcam,
-    #motionCanvas,
-    #scratchA,
-    #scratchB {
+    #analysisCanvas,
+    #motionCanvas {
       position: fixed;
       left: -10000px;
       top: -10000px;
+      width: 160px;
+      height: 90px;
       opacity: 0;
       pointer-events: none;
     }
@@ -46,20 +63,26 @@
       position: fixed;
       top: 18px;
       left: 18px;
-      z-index: 20;
+      z-index: 1000;
+
       padding: 10px 15px;
-      border: 1px solid rgba(255,255,255,0.72);
-      background: rgba(0,0,0,0.46);
-      color: #fff;
+
+      border: 1px solid rgba(255,255,255,0.7);
+      background: rgba(0,0,0,0.52);
+      color: white;
+
       font-size: 10px;
       letter-spacing: 1.5px;
+
       cursor: pointer;
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+    }
+
+    #startButton:hover {
+      background: rgba(255,255,255,0.12);
     }
 
     #startButton.active {
-      opacity: 0.24;
+      opacity: 0.25;
     }
 
     #startButton.active:hover {
@@ -68,854 +91,1797 @@
 
     #status {
       position: fixed;
-      left: 18px;
       bottom: 16px;
-      z-index: 20;
-      color: rgba(255,255,255,0.58);
+      left: 18px;
+      z-index: 1000;
+
+      color: rgba(255,255,255,0.55);
+
       font-size: 9px;
-      letter-spacing: 1.25px;
+      letter-spacing: 1.4px;
+
       pointer-events: none;
-      user-select: none;
     }
+
   </style>
 </head>
 
+
 <body>
 
-  <video id="footage" autoplay muted loop playsinline preload="auto">
-    <source src="./DSC_3062.mp4" type="video/mp4">
+
+  <!-- ======================================================
+       PRERECORDED FOOTAGE
+  ======================================================= -->
+
+  <video
+    id="footage"
+    autoplay
+    muted
+    loop
+    playsinline
+    preload="auto"
+  >
+    <source
+      src="./DSC_3062.mp4"
+      type="video/mp4"
+    >
   </video>
 
-  <video id="webcam" autoplay muted playsinline></video>
 
-  <canvas id="output"></canvas>
+  <!-- ======================================================
+       WEBCAM
+  ======================================================= -->
 
-  <canvas id="motionCanvas" width="160" height="90"></canvas>
-  <canvas id="scratchA"></canvas>
-  <canvas id="scratchB"></canvas>
+  <video
+    id="webcam"
+    autoplay
+    muted
+    playsinline
+  ></video>
 
-  <button id="startButton">ENABLE CAMERA + SOUND</button>
-  <div id="status">LOADING FOOTAGE... | KEYS 1 2 3 4 SPACE</div>
+
+  <!-- ======================================================
+       MOTION DETECTION
+  ======================================================= -->
+
+  <canvas
+    id="analysisCanvas"
+    width="160"
+    height="90"
+  ></canvas>
+
+  <canvas
+    id="motionCanvas"
+    width="160"
+    height="90"
+  ></canvas>
+
+
+  <!-- ======================================================
+       HYDRA OUTPUT
+  ======================================================= -->
+
+  <canvas id="hydraCanvas"></canvas>
+
+
+  <!-- ======================================================
+       UI
+  ======================================================= -->
+
+  <button id="startButton">
+    ENABLE CAMERA + SOUND
+  </button>
+
+  <div id="status">
+    LOADING FOOTAGE... | KEYS: 1 2 3 4 SPACE
+  </div>
+
+
+  <!-- ======================================================
+       HYDRA
+  ======================================================= -->
+
+  <script src="https://unpkg.com/hydra-synth"></script>
+
 
   <script>
-    const footage = document.getElementById("footage");
-    const webcam = document.getElementById("webcam");
 
-    const output = document.getElementById("output");
-    const ctx = output.getContext("2d");
+    /* ======================================================
+       ELEMENTS
+    ======================================================= */
 
-    const scratchA = document.getElementById("scratchA");
-    const scratchB = document.getElementById("scratchB");
-    const aCtx = scratchA.getContext("2d");
-    const bCtx = scratchB.getContext("2d");
+    const canvas =
+      document.getElementById("hydraCanvas");
 
-    const motionCanvas = document.getElementById("motionCanvas");
-    const motionCtx = motionCanvas.getContext("2d", { willReadFrequently: true });
+    const footage =
+      document.getElementById("footage");
 
-    const startButton = document.getElementById("startButton");
-    const statusText = document.getElementById("status");
+    const webcam =
+      document.getElementById("webcam");
 
-    let W = 0;
-    let H = 0;
+    const analysisCanvas =
+      document.getElementById("analysisCanvas");
+
+    const motionCanvas =
+      document.getElementById("motionCanvas");
+
+    const startButton =
+      document.getElementById("startButton");
+
+    const statusText =
+      document.getElementById("status");
+
+
+    const analysisContext =
+      analysisCanvas.getContext(
+        "2d",
+        {
+          willReadFrequently: true
+        }
+      );
+
+
+    const motionContext =
+      motionCanvas.getContext(
+        "2d",
+        {
+          willReadFrequently: true
+        }
+      );
+
+
+    /* ======================================================
+       STATE
+    ======================================================= */
 
     let cameraActive = false;
+
+    let hydraStarted = false;
+
     let analyser = null;
+
     let audioData = null;
 
     let audioLevel = 0;
+
     let audioPeak = 0;
+
     let motionLevel = 0;
+
     let motionPeak = 0;
 
-    let previousMotionFrame = null;
+    let previousFrame = null;
 
     let mouseX = 0.5;
-    let mouseY = 0.5;
-    let mouseEnergy = 0;
-    let lastMouseX = 0.5;
-    let lastMouseY = 0.5;
 
+    let mouseY = 0.5;
+
+    let previousMouseX = 0.5;
+
+    let previousMouseY = 0.5;
+
+    let mouseEnergy = 0;
+
+    // Keyboard-triggered glitch energies.
     let keyBurst = 0;
     let keySmear = 0;
-    let keyColor = 0;
+    let keyFlash = 0;
     let keyFold = 0;
+    let keyColor = 0;
 
-    let lastTime = performance.now();
 
-    const AUDIO_SENSITIVITY = 20;
-    const MOTION_GAIN = 11;
+    /* ======================================================
+       SETTINGS
+    ======================================================= */
 
-    /* =========================================================
-       RESIZE
-    ========================================================= */
+    const AUDIO_SENSITIVITY = 19;
 
-    function resize() {
-      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    const MOTION_GAIN = 10;
 
-      W = Math.max(1, Math.floor(window.innerWidth * dpr));
-      H = Math.max(1, Math.floor(window.innerHeight * dpr));
+    const BODY_GLITCH = 0.34;
 
-      output.width = W;
-      output.height = H;
+    const WEBCAM_AMOUNT = 0.20;
 
-      scratchA.width = W;
-      scratchA.height = H;
+    const FEEDBACK_AMOUNT = 0.075;
 
-      scratchB.width = W;
-      scratchB.height = H;
 
-      ctx.imageSmoothingEnabled = true;
-      aCtx.imageSmoothingEnabled = true;
-      bCtx.imageSmoothingEnabled = true;
-    }
+    /* ======================================================
+       HYDRA INSTANCE
+    ======================================================= */
 
-    window.addEventListener("resize", resize);
-    resize();
+    let hydra;
 
-    /* =========================================================
-       HELPERS
-    ========================================================= */
 
-    function coverRect(video) {
-      const vw = video.videoWidth || 16;
-      const vh = video.videoHeight || 9;
+    try {
 
-      const scale = Math.max(W / vw, H / vh);
+      hydra =
+        new Hydra({
 
-      const dw = vw * scale;
-      const dh = vh * scale;
+          canvas: canvas,
 
-      return {
-        x: (W - dw) / 2,
-        y: (H - dh) / 2,
-        w: dw,
-        h: dh
-      };
-    }
+          detectAudio: false,
 
-    function drawVideoCover(targetCtx, video, alpha = 1) {
-      if (!video || video.readyState < 2) return;
+          enableStreamCapture: false,
 
-      const r = coverRect(video);
+          makeGlobal: true
 
-      targetCtx.save();
-      targetCtx.globalAlpha = alpha;
-      targetCtx.drawImage(video, r.x, r.y, r.w, r.h);
-      targetCtx.restore();
-    }
-
-    function clamp01(v) {
-      return Math.max(0, Math.min(1, v));
-    }
-
-    function randomBetween(a, b) {
-      return a + Math.random() * (b - a);
-    }
-
-    /* =========================================================
-       FOOTAGE
-    ========================================================= */
-
-    async function ensureFootagePlaying() {
-      try {
-        footage.muted = true;
-        footage.loop = true;
-        await footage.play();
-        statusText.textContent = "FOOTAGE READY | KEYS 1 2 3 4 SPACE";
-      } catch (error) {
-        console.log("Footage play waiting for interaction:", error);
-        statusText.textContent = "CLICK ENABLE CAMERA + SOUND";
-      }
-    }
-
-    footage.addEventListener("loadeddata", ensureFootagePlaying, { once: true });
-
-    footage.addEventListener("error", () => {
-      statusText.textContent = "DSC_3062.mp4 NOT FOUND";
-    });
-
-    if (footage.readyState >= 2) {
-      ensureFootagePlaying();
-    }
-
-    /* =========================================================
-       CAMERA + SOUND
-    ========================================================= */
-
-    startButton.addEventListener("click", async () => {
-      try {
-        await footage.play();
-      } catch (_) {}
-
-      if (cameraActive) return;
-
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "user",
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          },
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: true
-          }
         });
 
-        webcam.srcObject = stream;
-        await webcam.play();
-
-        cameraActive = true;
-        previousMotionFrame = null;
-
-        startButton.textContent = "CAMERA + SOUND ACTIVE";
-        startButton.classList.add("active");
-        statusText.textContent = "MOVE / SPEAK / KEYS 1 2 3 4 SPACE";
-
-        try {
-          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-          const audioContext = new AudioContextClass();
-          await audioContext.resume();
-
-          const source = audioContext.createMediaStreamSource(stream);
-
-          analyser = audioContext.createAnalyser();
-          analyser.fftSize = 512;
-          analyser.smoothingTimeConstant = 0.14;
-
-          source.connect(analyser);
-
-          audioData = new Uint8Array(analyser.fftSize);
-        } catch (audioError) {
-          console.log("Audio analyser unavailable:", audioError);
-        }
-
-      } catch (error) {
-        console.error("Camera/microphone error:", error);
-        startButton.textContent = "CAMERA PERMISSION FAILED";
-        statusText.textContent = "CHECK CAMERA PERMISSION";
-      }
-    });
-
-    /* =========================================================
-       AUDIO
-    ========================================================= */
-
-    function updateAudio() {
-      if (!analyser || !audioData) {
-        audioLevel *= 0.94;
-        audioPeak *= 0.90;
-        return;
-      }
-
-      analyser.getByteTimeDomainData(audioData);
-
-      let sum = 0;
-
-      for (let i = 0; i < audioData.length; i++) {
-        const s = (audioData[i] - 128) / 128;
-        sum += s * s;
-      }
-
-      const rms = Math.sqrt(sum / audioData.length);
-      const target = Math.min(1, rms * AUDIO_SENSITIVITY);
-
-      audioLevel = audioLevel * 0.66 + target * 0.34;
-      audioPeak = Math.max(target, audioPeak * 0.83);
     }
 
-    /* =========================================================
-       CAMERA MOTION
-    ========================================================= */
+    catch(error) {
 
-    function updateMotion() {
-      if (!cameraActive || webcam.readyState < 2) {
-        motionLevel *= 0.92;
-        motionPeak *= 0.88;
+      console.error(
+        "Hydra failed to initialize:",
+        error
+      );
+
+      statusText.textContent =
+        "HYDRA FAILED TO LOAD";
+
+    }
+
+
+    /* ======================================================
+       RESIZE
+    ======================================================= */
+
+    function resizeHydra() {
+
+      if (
+        typeof setResolution !==
+        "function"
+      ) {
+
         return;
+
       }
 
-      const w = motionCanvas.width;
-      const h = motionCanvas.height;
 
-      motionCtx.save();
-      motionCtx.clearRect(0, 0, w, h);
-      motionCtx.translate(w, 0);
-      motionCtx.scale(-1, 1);
-      motionCtx.drawImage(webcam, 0, 0, w, h);
-      motionCtx.restore();
+      const ratio =
+        Math.min(
+          window.devicePixelRatio || 1,
+          1.5
+        );
 
-      let current;
+
+      setResolution(
+
+        Math.floor(
+          window.innerWidth *
+          ratio
+        ),
+
+        Math.floor(
+          window.innerHeight *
+          ratio
+        )
+
+      );
+
+    }
+
+
+    window.addEventListener(
+      "resize",
+      resizeHydra
+    );
+
+
+    setTimeout(
+      resizeHydra,
+      200
+    );
+
+
+    /* ======================================================
+       START FOOTAGE
+    ======================================================= */
+
+    async function startFootage() {
 
       try {
-        current = motionCtx.getImageData(0, 0, w, h);
-      } catch (_) {
-        return;
+
+        footage.muted = true;
+
+        footage.loop = true;
+
+
+        await footage.play();
+
+
+        console.log(
+          "Footage playing:",
+          footage.videoWidth,
+          footage.videoHeight
+        );
+
+
+        statusText.textContent =
+          "FOOTAGE READY";
+
+
+        /*
+          s0 = DSC_3062.mp4
+        */
+
+        s0.init({
+          src: footage
+        });
+
+
+        /*
+          Before webcam is enabled,
+          s1 also uses footage.
+
+          Once camera starts,
+          s1 becomes webcam.
+        */
+
+        s1.init({
+          src: footage
+        });
+
+
+        /*
+          s2 = motion-map canvas.
+        */
+
+        s2.init({
+          src: motionCanvas
+        });
+
+
+        if (!hydraStarted) {
+
+          startHydraPatch();
+
+          hydraStarted = true;
+
+        }
+
       }
 
-      if (!previousMotionFrame) {
-        previousMotionFrame = new Uint8ClampedArray(current.data);
-        return;
+      catch(error) {
+
+        console.error(
+          "Footage playback failed:",
+          error
+        );
+
+
+        statusText.textContent =
+          "CLICK ENABLE CAMERA + SOUND";
+
       }
 
-      let total = 0;
-
-      for (let i = 0; i < current.data.length; i += 4) {
-        const now = (
-          current.data[i] +
-          current.data[i + 1] +
-          current.data[i + 2]
-        ) / 3;
-
-        const prev = (
-          previousMotionFrame[i] +
-          previousMotionFrame[i + 1] +
-          previousMotionFrame[i + 2]
-        ) / 3;
-
-        let d = Math.abs(now - prev);
-        d = Math.max(0, d - 8);
-        d = Math.min(255, d * MOTION_GAIN);
-
-        total += d;
-      }
-
-      const measured = Math.min(
-        1,
-        (total / (w * h * 255)) * 9
-      );
-
-      motionLevel = motionLevel * 0.68 + measured * 0.32;
-      motionPeak = Math.max(measured, motionPeak * 0.84);
-
-      previousMotionFrame.set(current.data);
     }
 
-    /* =========================================================
+
+    /* ======================================================
+       VIDEO EVENTS
+    ======================================================= */
+
+    footage.addEventListener(
+      "loadeddata",
+      () => {
+
+        startFootage();
+
+      },
+      {
+        once: true
+      }
+    );
+
+
+    footage.addEventListener(
+      "canplay",
+      () => {
+
+        if (!hydraStarted) {
+
+          startFootage();
+
+        }
+
+      },
+      {
+        once: true
+      }
+    );
+
+
+    footage.addEventListener(
+      "error",
+      event => {
+
+        console.error(
+          "VIDEO ERROR",
+          event
+        );
+
+
+        statusText.textContent =
+          "DSC_3062.mp4 NOT LOADING";
+
+      }
+    );
+
+
+    if (
+      footage.readyState >= 2
+    ) {
+
+      startFootage();
+
+    }
+
+
+    /* ======================================================
        MOUSE
-    ========================================================= */
+    ======================================================= */
 
-    window.addEventListener("mousemove", (event) => {
-      const x = event.clientX / window.innerWidth;
-      const y = event.clientY / window.innerHeight;
+    window.addEventListener(
+      "mousemove",
+      event => {
 
-      const dx = x - lastMouseX;
-      const dy = y - lastMouseY;
+        const x =
+          event.clientX /
+          window.innerWidth;
 
-      mouseEnergy = Math.min(
-        1,
-        mouseEnergy + Math.hypot(dx, dy) * 7
-      );
 
-      mouseX = x;
-      mouseY = y;
+        const y =
+          event.clientY /
+          window.innerHeight;
 
-      lastMouseX = x;
-      lastMouseY = y;
-    });
 
-    /* =========================================================
-       KEYBOARD
-    ========================================================= */
+        const dx =
+          x -
+          previousMouseX;
 
-    window.addEventListener("keydown", (event) => {
-      if (event.repeat) return;
 
-      if (event.code === "Digit1") {
-        keyBurst = 1;
-        statusText.textContent = "KEY 1 — TEAR BURST";
-      }
+        const dy =
+          y -
+          previousMouseY;
 
-      if (event.code === "Digit2") {
-        keySmear = 1;
-        statusText.textContent = "KEY 2 — DATAMOSH SMEAR";
-      }
 
-      if (event.code === "Digit3") {
-        keyColor = 1;
-        statusText.textContent = "KEY 3 — COLOR SPLIT";
-      }
+        const speed =
+          Math.hypot(
+            dx,
+            dy
+          );
 
-      if (event.code === "Digit4") {
-        keyFold = 1;
-        statusText.textContent = "KEY 4 — FOLD";
-      }
 
-      if (event.code === "Space") {
-        event.preventDefault();
-        keyBurst = 1;
-        keySmear = 1;
-        keyColor = 1;
-        keyFold = 1;
-        statusText.textContent = "SPACE — FULL GLITCH";
-      }
-    });
-
-    /* =========================================================
-       BASE FOOTAGE
-    ========================================================= */
-
-    function drawBase() {
-      ctx.save();
-
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, W, H);
-
-      /* Slightly brighter footage */
-      ctx.filter = "brightness(1.18) saturate(1.12) contrast(1.04)";
-      drawVideoCover(ctx, footage, 1);
-
-      ctx.restore();
-      ctx.filter = "none";
-    }
-
-    /* =========================================================
-       IRREGULAR HORIZONTAL TEARING
-    ========================================================= */
-
-    function drawTearing(intensity) {
-      if (footage.readyState < 2) return;
-
-      const count = Math.floor(6 + intensity * 42);
-
-      for (let i = 0; i < count; i++) {
-        const bandH = randomBetween(
-          H * 0.002,
-          H * (0.008 + intensity * 0.020)
-        );
-
-        const y = randomBetween(0, H - bandH);
-
-        const maxShift = W * (0.015 + intensity * 0.12);
-        const shift = randomBetween(-maxShift, maxShift);
-
-        const sourceRect = coverRect(footage);
-
-        const sourceY =
-          ((y / H) * footage.videoHeight);
-
-        const sourceH =
-          Math.max(
+        mouseEnergy =
+          Math.min(
             1,
-            (bandH / H) * footage.videoHeight
+            mouseEnergy +
+            speed * 9
           );
 
-        ctx.save();
 
-        ctx.globalAlpha =
-          0.12 +
-          intensity * 0.38;
+        mouseX = x;
 
-        ctx.drawImage(
-          footage,
-          0,
-          sourceY,
-          footage.videoWidth,
-          sourceH,
-          shift,
-          y,
-          W,
-          bandH
-        );
+        mouseY = y;
 
-        ctx.restore();
+
+        previousMouseX = x;
+
+        previousMouseY = y;
+
       }
-    }
+    );
 
-    /* =========================================================
-       SHARP RGB / COLOR TEARS
-    ========================================================= */
 
-    function drawColorTears(intensity) {
-      if (footage.readyState < 2) return;
 
-      const bands = Math.floor(4 + intensity * 24);
+    /* ======================================================
+       KEYBOARD INTERACTIONS
 
-      const colors = [
-        "rgba(255,0,145,0.72)",
-        "rgba(0,235,255,0.72)",
-        "rgba(110,255,0,0.45)"
-      ];
+       1 = horizontal burst
+       2 = temporal smear
+       3 = chromatic flash
+       4 = fold / wave displacement
+       SPACE = combined impact
+    ======================================================= */
 
-      for (let i = 0; i < bands; i++) {
-        const bandH = randomBetween(
-          H * 0.0025,
-          H * (0.006 + intensity * 0.012)
-        );
+    window.addEventListener(
+      "keydown",
+      event => {
 
-        const y = randomBetween(0, H - bandH);
+        if (event.repeat) {
+          return;
+        }
 
-        const shift =
-          randomBetween(
-            -W * (0.008 + intensity * 0.055),
-            W * (0.008 + intensity * 0.055)
-          );
+        if (event.code === "Digit1") {
+          keyBurst = 1;
+          statusText.textContent = "KEY 1 — BURST";
+        }
 
-        const color =
-          colors[Math.floor(Math.random() * colors.length)];
+        if (event.code === "Digit2") {
+          keySmear = 1;
+          statusText.textContent = "KEY 2 — SMEAR";
+        }
 
-        const srcY =
-          (y / H) *
-          footage.videoHeight;
+        if (event.code === "Digit3") {
+          keyFlash = 1;
+          statusText.textContent = "KEY 3 — COLOR FLASH";
+        }
 
-        const srcH =
-          Math.max(
-            1,
-            (bandH / H) *
-            footage.videoHeight
-          );
+        if (event.code === "Digit4") {
+          keyFold = 1;
+          statusText.textContent = "KEY 4 — FOLD";
+        }
 
-        aCtx.save();
-        aCtx.clearRect(0, 0, W, H);
+        if (event.code === "Space") {
+          event.preventDefault();
+          keyBurst = 1;
+          keySmear = 1;
+          keyFlash = 1;
+          keyFold = 1;
+          keyColor = 1;
+          statusText.textContent = "SPACE — FULL IMPACT";
+        }
 
-        aCtx.drawImage(
-          footage,
-          0,
-          srcY,
-          footage.videoWidth,
-          srcH,
-          shift,
-          y,
-          W,
-          bandH
-        );
-
-        aCtx.globalCompositeOperation = "source-atop";
-        aCtx.fillStyle = color;
-        aCtx.fillRect(0, y, W, bandH);
-
-        aCtx.restore();
-
-        ctx.save();
-        ctx.globalCompositeOperation = "screen";
-        ctx.globalAlpha =
-          0.32 +
-          intensity * 0.55;
-
-        ctx.drawImage(
-          scratchA,
-          0,
-          0
-        );
-
-        ctx.restore();
       }
-    }
+    );
 
-    /* =========================================================
-       WEBCAM + FOOTAGE FUSION
-    ========================================================= */
 
-    function drawWebcamFusion(intensity) {
+    /* ======================================================
+       ENABLE CAMERA + MICROPHONE
+    ======================================================= */
+
+    startButton.addEventListener(
+      "click",
+      async () => {
+
+        /*
+          Also make sure footage is playing.
+        */
+
+        try {
+
+          await footage.play();
+
+        }
+
+        catch(error) {
+
+          console.log(
+            "Footage interaction playback:",
+            error
+          );
+
+        }
+
+
+        if (cameraActive) {
+
+          return;
+
+        }
+
+
+        if (
+          !navigator.mediaDevices ||
+          !navigator.mediaDevices.getUserMedia
+        ) {
+
+          startButton.textContent =
+            "CAMERA NOT SUPPORTED";
+
+          return;
+
+        }
+
+
+        try {
+
+          statusText.textContent =
+            "REQUESTING CAMERA...";
+
+
+          const stream =
+            await navigator.mediaDevices
+              .getUserMedia({
+
+                video: {
+
+                  facingMode: "user",
+
+                  width: {
+                    ideal: 1280
+                  },
+
+                  height: {
+                    ideal: 720
+                  }
+
+                },
+
+                audio: {
+
+                  echoCancellation: false,
+
+                  noiseSuppression: false,
+
+                  autoGainControl: true
+
+                }
+
+              });
+
+
+          webcam.srcObject =
+            stream;
+
+
+          await webcam.play();
+
+
+          /*
+            s1 now becomes webcam.
+          */
+
+          s1.init({
+            src: webcam
+          });
+
+
+          cameraActive = true;
+
+
+          startButton.textContent =
+            "CAMERA + SOUND ACTIVE";
+
+
+          startButton.classList.add(
+            "active"
+          );
+
+
+          statusText.textContent =
+            "MOVE / SPEAK / INTERACT";
+
+
+          /*
+            AUDIO
+          */
+
+          try {
+
+            const AudioContext =
+              window.AudioContext ||
+              window.webkitAudioContext;
+
+
+            const audioContext =
+              new AudioContext();
+
+
+            await audioContext.resume();
+
+
+            const microphone =
+              audioContext
+                .createMediaStreamSource(
+                  stream
+                );
+
+
+            analyser =
+              audioContext
+                .createAnalyser();
+
+
+            analyser.fftSize =
+              512;
+
+
+            analyser.smoothingTimeConstant =
+              0.15;
+
+
+            microphone.connect(
+              analyser
+            );
+
+
+            audioData =
+              new Uint8Array(
+                analyser.fftSize
+              );
+
+          }
+
+          catch(audioError) {
+
+            console.log(
+              "Audio unavailable:",
+              audioError
+            );
+
+          }
+
+
+          previousFrame = null;
+
+
+          requestAnimationFrame(
+            updateMotion
+          );
+
+        }
+
+        catch(error) {
+
+          console.error(
+            "Camera / microphone error:",
+            error
+          );
+
+
+          startButton.textContent =
+            "CAMERA PERMISSION FAILED";
+
+
+          statusText.textContent =
+            "CHECK CAMERA PERMISSION";
+
+        }
+
+      }
+    );
+
+
+    /* ======================================================
+       AUDIO ANALYSIS
+    ======================================================= */
+
+    function updateAudio() {
+
       if (
-        !cameraActive ||
-        webcam.readyState < 2 ||
-        intensity <= 0.01
+        analyser &&
+        audioData
       ) {
-        return;
-      }
 
-      const bands =
-        Math.floor(
-          3 +
-          intensity * 30
+        analyser.getByteTimeDomainData(
+          audioData
         );
 
-      for (let i = 0; i < bands; i++) {
-        const y =
-          randomBetween(
-            0,
-            H
+
+        let sum = 0;
+
+
+        for (
+          let i = 0;
+          i < audioData.length;
+          i++
+        ) {
+
+          const sample =
+            (
+              audioData[i] -
+              128
+            ) / 128;
+
+
+          sum +=
+            sample *
+            sample;
+
+        }
+
+
+        const rms =
+          Math.sqrt(
+            sum /
+            audioData.length
           );
 
-        const h =
-          randomBetween(
-            H * 0.004,
-            H * (0.015 + intensity * 0.035)
-          );
 
-        const shift =
-          randomBetween(
-            -W * intensity * 0.05,
-            W * intensity * 0.05
-          );
+        const target =
+          Math.min(
 
-        const webcamY =
-          (y / H) *
-          webcam.videoHeight;
-
-        const webcamH =
-          Math.max(
             1,
-            (h / H) *
-            webcam.videoHeight
+
+            rms *
+            AUDIO_SENSITIVITY
+
           );
 
-        ctx.save();
 
-        ctx.globalCompositeOperation =
-          Math.random() > 0.55
-            ? "screen"
-            : "lighten";
+        audioLevel =
+          audioLevel * 0.65 +
+          target * 0.35;
 
-        ctx.globalAlpha =
-          0.08 +
-          intensity * 0.33;
 
-        ctx.filter =
-          "saturate(1.6) contrast(1.18)";
-
-        ctx.drawImage(
-          webcam,
-          0,
-          webcamY,
-          webcam.videoWidth,
-          webcamH,
-          shift,
-          y,
-          W,
-          h
-        );
-
-        ctx.restore();
-        ctx.filter = "none";
-      }
-    }
-
-    /* =========================================================
-       DATAMOSH / SMEAR
-    ========================================================= */
-
-    function drawSmear(intensity) {
-      if (intensity <= 0.01) return;
-
-      bCtx.clearRect(0, 0, W, H);
-      bCtx.drawImage(output, 0, 0);
-
-      const passes =
-        Math.floor(
-          3 +
-          intensity * 14
-        );
-
-      for (let i = 0; i < passes; i++) {
-        const y = randomBetween(0, H);
-        const h = randomBetween(
-          H * 0.006,
-          H * (0.02 + intensity * 0.05)
-        );
-
-        const shift =
-          randomBetween(
-            -W * intensity * 0.11,
-            W * intensity * 0.11
+        audioPeak =
+          Math.max(
+            target,
+            audioPeak * 0.84
           );
 
-        ctx.save();
-
-        ctx.globalAlpha =
-          0.08 +
-          intensity * 0.22;
-
-        ctx.drawImage(
-          scratchB,
-          0,
-          y,
-          W,
-          h,
-          shift,
-          y,
-          W,
-          h
-        );
-
-        ctx.restore();
       }
-    }
 
-    /* =========================================================
-       LOCAL MOUSE GLITCH
-    ========================================================= */
+      else {
 
-    function drawMouseGlitch(intensity) {
-      if (intensity <= 0.01) return;
+        audioLevel *= 0.95;
 
-      const centerX = mouseX * W;
-      const centerY = mouseY * H;
+        audioPeak *= 0.90;
 
-      const radius =
-        W *
-        (0.035 + intensity * 0.05);
+      }
 
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(
-        centerX,
-        centerY,
-        radius,
-        0,
-        Math.PI * 2
+
+      mouseEnergy *= 0.91;
+
+      keyBurst *= 0.88;
+      keySmear *= 0.92;
+      keyFlash *= 0.84;
+      keyFold *= 0.90;
+      keyColor *= 0.86;
+
+
+      requestAnimationFrame(
+        updateAudio
       );
-      ctx.clip();
 
-      const slices =
-        Math.floor(
-          4 +
-          intensity * 14
-        );
-
-      for (let i = 0; i < slices; i++) {
-        const y =
-          centerY +
-          randomBetween(
-            -radius,
-            radius
-          );
-
-        const h =
-          randomBetween(
-            2,
-            Math.max(
-              4,
-              radius * 0.18
-            )
-          );
-
-        const shift =
-          randomBetween(
-            -radius * 0.75,
-            radius * 0.75
-          );
-
-        ctx.globalAlpha =
-          0.14 +
-          intensity * 0.32;
-
-        ctx.drawImage(
-          scratchB,
-          0,
-          Math.max(0, y),
-          W,
-          h,
-          shift,
-          Math.max(0, y),
-          W,
-          h
-        );
-      }
-
-      ctx.restore();
     }
 
-    /* =========================================================
-       FRAME LOOP
-    ========================================================= */
 
-    function renderFrame(now) {
-      const dt =
+    updateAudio();
+
+
+    /* ======================================================
+       WEBCAM MOTION DETECTION
+    ======================================================= */
+
+    function updateMotion() {
+
+      if (!cameraActive) {
+
+        return;
+
+      }
+
+
+      if (
+        webcam.readyState < 2
+      ) {
+
+        requestAnimationFrame(
+          updateMotion
+        );
+
+        return;
+
+      }
+
+
+      const width =
+        analysisCanvas.width;
+
+
+      const height =
+        analysisCanvas.height;
+
+
+      /*
+        Mirror webcam before analysis.
+      */
+
+      analysisContext.save();
+
+
+      analysisContext.clearRect(
+        0,
+        0,
+        width,
+        height
+      );
+
+
+      analysisContext.translate(
+        width,
+        0
+      );
+
+
+      analysisContext.scale(
+        -1,
+        1
+      );
+
+
+      analysisContext.drawImage(
+        webcam,
+        0,
+        0,
+        width,
+        height
+      );
+
+
+      analysisContext.restore();
+
+
+      let frame;
+
+
+      try {
+
+        frame =
+          analysisContext
+            .getImageData(
+              0,
+              0,
+              width,
+              height
+            );
+
+      }
+
+      catch(error) {
+
+        requestAnimationFrame(
+          updateMotion
+        );
+
+        return;
+
+      }
+
+
+      if (!previousFrame) {
+
+        previousFrame =
+          new Uint8ClampedArray(
+            frame.data
+          );
+
+
+        requestAnimationFrame(
+          updateMotion
+        );
+
+
+        return;
+
+      }
+
+
+      const output =
+        motionContext
+          .createImageData(
+            width,
+            height
+          );
+
+
+      let totalMovement = 0;
+
+
+      for (
+        let i = 0;
+        i < frame.data.length;
+        i += 4
+      ) {
+
+        const current =
+          (
+            frame.data[i] +
+            frame.data[i + 1] +
+            frame.data[i + 2]
+          ) / 3;
+
+
+        const old =
+          (
+            previousFrame[i] +
+            previousFrame[i + 1] +
+            previousFrame[i + 2]
+          ) / 3;
+
+
+        let difference =
+          Math.abs(
+            current -
+            old
+          );
+
+
+        /*
+          Suppress normal webcam sensor noise.
+        */
+
+        difference =
+          Math.max(
+            0,
+            difference - 10
+          );
+
+
+        difference =
+          Math.min(
+            255,
+            difference *
+            MOTION_GAIN
+          );
+
+
+        /*
+          Higher contrast movement map.
+        */
+
+        const normalized =
+          difference /
+          255;
+
+
+        const shaped =
+          Math.pow(
+            normalized,
+            0.65
+          );
+
+
+        const value =
+          Math.floor(
+            shaped *
+            255
+          );
+
+
+        output.data[i] =
+          value;
+
+
+        output.data[i + 1] =
+          value;
+
+
+        output.data[i + 2] =
+          value;
+
+
+        output.data[i + 3] =
+          255;
+
+
+        totalMovement +=
+          value;
+
+      }
+
+
+      motionContext.putImageData(
+        output,
+        0,
+        0
+      );
+
+
+      const average =
+        totalMovement /
+        (
+          width *
+          height *
+          255
+        );
+
+
+      const measured =
         Math.min(
-          0.05,
-          (now - lastTime) / 1000
+          1,
+          average * 8
         );
 
-      lastTime = now;
 
-      updateAudio();
-      updateMotion();
+      motionLevel =
+        motionLevel * 0.72 +
+        measured * 0.28;
 
-      drawBase();
 
-      const ambientGlitch = 0.16;
-
-      const reactive =
-        clamp01(
-          ambientGlitch +
-          motionLevel * 1.7 +
-          motionPeak * 1.05 +
-          audioLevel * 0.85 +
-          audioPeak * 0.55 +
-          keyBurst * 0.85
+      motionPeak =
+        Math.max(
+          measured,
+          motionPeak * 0.84
         );
 
-      const colorIntensity =
-        clamp01(
-          0.18 +
-          motionPeak * 1.2 +
-          audioPeak * 0.75 +
-          keyColor * 1.0
-        );
 
-      const fusionIntensity =
-        clamp01(
-          motionLevel * 1.9 +
-          motionPeak * 0.9 +
-          audioLevel * 0.35
-        );
+      previousFrame.set(
+        frame.data
+      );
 
-      const smearIntensity =
-        clamp01(
-          motionLevel * 0.45 +
-          keySmear * 1.0 +
-          keyFold * 0.35
-        );
 
-      /* Save current image for smear + mouse sampling */
-      bCtx.clearRect(0, 0, W, H);
-      bCtx.drawImage(output, 0, 0);
+      requestAnimationFrame(
+        updateMotion
+      );
 
-      drawTearing(reactive);
-      drawColorTears(colorIntensity);
-      drawWebcamFusion(fusionIntensity);
-      drawSmear(smearIntensity);
-
-      if (keyFold > 0.02) {
-        ctx.save();
-        ctx.globalAlpha = keyFold * 0.24;
-
-        const wobble =
-          Math.sin(now * 0.006) *
-          W *
-          0.035 *
-          keyFold;
-
-        ctx.drawImage(
-          scratchB,
-          wobble,
-          0,
-          W,
-          H
-        );
-
-        ctx.restore();
-      }
-
-      drawMouseGlitch(mouseEnergy);
-
-      mouseEnergy *= Math.pow(0.90, dt * 60);
-      keyBurst *= Math.pow(0.90, dt * 60);
-      keySmear *= Math.pow(0.93, dt * 60);
-      keyColor *= Math.pow(0.88, dt * 60);
-      keyFold *= Math.pow(0.92, dt * 60);
-
-      requestAnimationFrame(renderFrame);
     }
 
-    requestAnimationFrame(renderFrame);
 
-    /* Safari fallback */
+    /* ======================================================
+       HYDRA PATCH
+    ======================================================= */
+
+
+
+    function startHydraPatch() {
+
+      try {
+
+        /*
+          ----------------------------------------------------
+          o1 = ORGANIC MOTION MAP
+
+          Camera movement becomes an irregular displacement field.
+          No square geometry, no checkerboard pixel pattern.
+          ----------------------------------------------------
+        */
+
+        src(s2)
+
+          .contrast(4.4)
+
+          .posterize(9, 0.76)
+
+          .scale(
+            () =>
+              1.01 +
+              motionLevel * 0.03 +
+              keyFold * 0.025
+          )
+
+          .rotate(
+            () =>
+              Math.sin(time * 0.17) *
+              (0.01 + motionPeak * 0.035 + keyFold * 0.05)
+          )
+
+          .scrollX(
+            () =>
+              Math.sin(time * 0.43) *
+              (0.008 + motionPeak * 0.025)
+          )
+
+          .scrollY(
+            () =>
+              Math.cos(time * 0.31) *
+              (0.006 + motionPeak * 0.018)
+          )
+
+          .modulate(
+            osc(2.4, 0.017, 0)
+              .rotate(0.21)
+              .scrollX(() => Math.sin(time * 0.22) * 0.05),
+            () =>
+              0.015 +
+              motionPeak * 0.055 +
+              keyFold * 0.08
+          )
+
+          .out(o1);
+
+
+
+        /*
+          ----------------------------------------------------
+          o2 = IRREGULAR HORIZONTAL TEAR FIELD
+
+          Thin bands with uneven spacing and drifting distortion.
+          ----------------------------------------------------
+        */
+
+        osc(
+          13,
+          0.021,
+          0
+        )
+
+          .rotate(Math.PI / 2)
+
+          .thresh(
+            0.71,
+            0.025
+          )
+
+          .scrollY(
+            () =>
+              Math.sin(time * 0.91) * 0.13 +
+              Math.sin(time * 0.23) * 0.047 +
+              keyBurst * 0.08
+          )
+
+          .modulate(
+            osc(3.1, 0.014, 0)
+              .rotate(0.13)
+              .scrollX(() => Math.sin(time * 0.37) * 0.05),
+            () =>
+              0.035 +
+              motionPeak * 0.035 +
+              keyBurst * 0.08
+          )
+
+          .out(o2);
+
+
+
+        /*
+          ----------------------------------------------------
+          MAIN FOOTAGE
+
+          Slightly brighter than before.
+          Footage stays readable, but always has a mild glitch skin.
+          ----------------------------------------------------
+        */
+
+        src(s0)
+
+          .scale(1.003)
+
+          .brightness(
+            () =>
+              0.10 +
+              audioLevel * 0.025
+          )
+
+          .saturate(
+            () =>
+              1.28 +
+              audioLevel * 0.55 +
+              keyColor * 0.7
+          )
+
+          .contrast(
+            () =>
+              1.08 +
+              audioPeak * 0.10 +
+              keyFlash * 0.12
+          )
+
+
+          /*
+            Camera movement pulls the footage into the webcam field.
+          */
+
+          .modulate(
+
+            src(o1),
+
+            () => {
+
+              if (!cameraActive) {
+                return 0.012;
+              }
+
+              return (
+                0.018 +
+                motionLevel * BODY_GLITCH +
+                motionPeak * 0.17 +
+                audioPeak * 0.045 +
+                keyFold * 0.18
+              );
+
+            }
+
+          )
+
+
+          /*
+            Always-on mild footage tearing.
+          */
+
+          .blend(
+
+            src(s0)
+
+              .brightness(0.08)
+
+              .scrollX(
+                () =>
+                  0.004 +
+                  motionPeak * 0.052 +
+                  audioPeak * 0.020 +
+                  keyBurst * 0.16
+              )
+
+              .scrollY(
+                () =>
+                  Math.sin(time * 0.37) *
+                  (
+                    0.003 +
+                    motionPeak * 0.008 +
+                    keyBurst * 0.02
+                  )
+              )
+
+              .mask(src(o2)),
+
+            () =>
+              0.055 +
+              motionPeak * 0.20 +
+              audioPeak * 0.07 +
+              keyBurst * 0.34
+
+          )
+
+
+          /*
+            Opposite tear layer.
+          */
+
+          .blend(
+
+            src(s0)
+
+              .brightness(0.08)
+
+              .scrollX(
+                () =>
+                  -0.004 -
+                  motionPeak * 0.045 -
+                  audioPeak * 0.018 -
+                  keyBurst * 0.11
+              )
+
+              .mask(
+                src(o2)
+                  .invert()
+                  .scrollY(0.039)
+              ),
+
+            () =>
+              0.045 +
+              motionPeak * 0.16 +
+              keyBurst * 0.20
+
+          )
+
+
+          /*
+            HOT MAGENTA / RED
+          */
+
+          .add(
+
+            src(s0)
+
+              .scrollX(
+                () =>
+                  0.010 +
+                  motionPeak * 0.045 +
+                  audioPeak * 0.030 +
+                  keyFlash * 0.06
+              )
+
+              .color(
+                1.65,
+                0.0,
+                0.72
+              )
+
+              .saturate(2.2)
+
+              .contrast(1.55)
+
+              .mask(
+                src(o2)
+                  .scrollY(0.016)
+              ),
+
+            () =>
+              0.055 +
+              motionPeak * 0.16 +
+              audioPeak * 0.09 +
+              keyFlash * 0.28
+
+          )
+
+
+          /*
+            ELECTRIC CYAN / BLUE
+          */
+
+          .add(
+
+            src(s0)
+
+              .scrollX(
+                () =>
+                  -0.012 -
+                  motionPeak * 0.040 -
+                  audioPeak * 0.027 -
+                  keyFlash * 0.055
+              )
+
+              .color(
+                0.0,
+                1.35,
+                1.75
+              )
+
+              .saturate(2.15)
+
+              .contrast(1.58)
+
+              .mask(
+                src(o2)
+                  .invert()
+                  .scrollY(-0.021)
+              ),
+
+            () =>
+              0.050 +
+              motionPeak * 0.15 +
+              audioPeak * 0.085 +
+              keyFlash * 0.26
+
+          )
+
+
+          /*
+            ACID GREEN / YELLOW ACCENT
+          */
+
+          .add(
+
+            src(s0)
+
+              .scrollX(
+                () =>
+                  Math.sin(time * 1.83) *
+                  (
+                    0.006 +
+                    motionPeak * 0.018 +
+                    keyColor * 0.035
+                  )
+              )
+
+              .color(
+                0.38,
+                1.55,
+                0.02
+              )
+
+              .saturate(2.3)
+
+              .contrast(1.62)
+
+              .mask(
+                src(o2)
+                  .scrollY(0.071)
+              ),
+
+            () =>
+              0.018 +
+              motionPeak * 0.065 +
+              audioPeak * 0.040 +
+              keyColor * 0.16
+
+          )
+
+
+          /*
+            WEBCAM + FOOTAGE FUSION
+
+            Camera appears through motion-generated fragments,
+            while also displacing the prerecorded footage.
+          */
+
+          .blend(
+
+            src(s1)
+
+              .brightness(0.08)
+
+              .saturate(
+                () =>
+                  1.30 +
+                  audioLevel * 0.65 +
+                  keyColor * 0.6
+              )
+
+              .contrast(1.36)
+
+              .colorama(
+                () =>
+                  0.008 +
+                  motionPeak * 0.018 +
+                  audioPeak * 0.018 +
+                  keyFlash * 0.045
+              )
+
+              .modulate(
+                src(o1),
+                () =>
+                  0.020 +
+                  motionPeak * 0.10 +
+                  keyFold * 0.12
+              )
+
+              .mask(
+                src(o1)
+                  .contrast(2.6)
+              )
+
+              .scrollX(
+                () =>
+                  Math.sin(time * 1.71) *
+                  (
+                    motionPeak * 0.045 +
+                    keySmear * 0.05
+                  )
+              ),
+
+            () => {
+
+              if (!cameraActive) {
+                return 0;
+              }
+
+              return (
+                WEBCAM_AMOUNT +
+                motionLevel * 0.24 +
+                motionPeak * 0.08 +
+                keySmear * 0.14
+              );
+
+            }
+
+          )
+
+
+          /*
+            TEMPORAL SMEAR / DATAMOSH FEEL
+          */
+
+          .blend(
+
+            src(o0)
+
+              .scale(
+                () =>
+                  1.0008 +
+                  motionLevel * 0.004 +
+                  keySmear * 0.018
+              )
+
+              .scrollX(
+                () =>
+                  Math.sin(time * 0.48) *
+                  (
+                    motionLevel * 0.018 +
+                    keySmear * 0.08
+                  )
+              )
+
+              .scrollY(
+                () =>
+                  Math.cos(time * 0.33) *
+                  keySmear *
+                  0.018
+              )
+
+              .colorama(
+                () =>
+                  keySmear * 0.025
+              ),
+
+            () =>
+              FEEDBACK_AMOUNT +
+              motionLevel * 0.09 +
+              audioPeak * 0.035 +
+              keySmear * 0.28
+
+          )
+
+
+          /*
+            Brief key-triggered fold / wave.
+          */
+
+          .modulate(
+            osc(
+              2.6,
+              0.018,
+              0
+            )
+              .rotate(0.32)
+              .scrollY(() => Math.sin(time * 0.42) * 0.08),
+            () =>
+              keyFold * 0.12
+          )
+
+          .out(o0);
+
+
+
+        /*
+          ----------------------------------------------------
+          o3 = IRREGULAR MOUSE FIELD
+
+          Circular + broken + sliced.
+          No square shape anywhere.
+          ----------------------------------------------------
+        */
+
+        shape(
+          72,
+          () =>
+            0.028 +
+            mouseEnergy * 0.045,
+          0.42
+        )
+
+          .scrollX(
+            () =>
+              mouseX - 0.5
+          )
+
+          .scrollY(
+            () =>
+              0.5 - mouseY
+          )
+
+          .modulate(
+            osc(2.8, 0.019, 0)
+              .rotate(0.27)
+              .scrollX(() => Math.sin(time * 0.41) * 0.045),
+            () =>
+              0.028 +
+              mouseEnergy * 0.055
+          )
+
+          .mult(
+            osc(
+              17,
+              0.031,
+              0
+            )
+              .rotate(Math.PI / 2)
+              .thresh(
+                0.55,
+                0.10
+              )
+              .scrollY(
+                () =>
+                  Math.sin(time * 1.21) * 0.09
+              )
+          )
+
+          .out(o3);
+
+
+
+        /*
+          ----------------------------------------------------
+          FINAL OUTPUT
+          ----------------------------------------------------
+        */
+
+        src(o0)
+
+          .blend(
+
+            src(o0)
+
+              .scrollX(
+                () =>
+                  mouseEnergy *
+                  (
+                    0.022 +
+                    Math.sin(time * 4.2) * 0.018
+                  )
+              )
+
+              .colorama(
+                () =>
+                  mouseEnergy * 0.020
+              )
+
+              .mask(src(o3)),
+
+            () =>
+              mouseEnergy * 0.30
+
+          )
+
+          .brightness(
+            () =>
+              keyFlash * 0.05
+          )
+
+          .out(o3);
+
+
+        render(o3);
+
+
+        statusText.textContent =
+          "MOVE / SPEAK / KEYS 1 2 3 4 SPACE";
+
+      }
+
+      catch(error) {
+
+        console.error(
+          "Hydra patch error:",
+          error
+        );
+
+
+        try {
+
+          src(s0)
+            .brightness(0.10)
+            .out(o0);
+
+          render(o0);
+
+
+          statusText.textContent =
+            "FOOTAGE FALLBACK MODE";
+
+        }
+
+        catch(fallbackError) {
+
+          console.error(
+            "Hydra fallback failed:",
+            fallbackError
+          );
+
+
+          statusText.textContent =
+            "HYDRA ERROR";
+
+        }
+
+      }
+
+    }
+
+
+    /* ======================================================
+       SAFARI AUTOPLAY FALLBACK
+    ======================================================= */
+
     document.addEventListener(
       "click",
       async () => {
-        if (footage.paused) {
+
+        if (
+          footage.paused
+        ) {
+
           try {
+
             await footage.play();
-          } catch (_) {}
+
+          }
+
+          catch(error) {
+
+            console.log(
+              "Safari playback:",
+              error
+            );
+
+          }
+
         }
+
       },
-      { once: true }
+      {
+        once: true
+      }
     );
+
+
   </script>
 
 </body>
+
 </html>
