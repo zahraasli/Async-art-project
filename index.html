@@ -1109,7 +1109,476 @@
        HYDRA PATCH
     ========================================================= */
 
-    function createHydraPatch() {
+  <script>
+function createHydraPatch() {
+
+  /* =========================================================
+     WEBCAM BODY / MOTION MAP
+     No noise.
+  ========================================================= */
+
+  src(s2)
+
+    .contrast(5)
+
+    .luma(
+      0.08,
+      0.05
+    )
+
+    .pixelate(
+      80,
+      45
+    )
+
+    .scale(
+      1.05
+    )
+
+    .out(o1);
+
+
+
+  /* =========================================================
+     HORIZONTAL GLITCH BANDS
+
+     Generates digital horizontal slices,
+     NOT television noise.
+  ========================================================= */
+
+  osc(
+    3,
+    0.02,
+    0
+  )
+
+    .rotate(
+      Math.PI / 2
+    )
+
+    .thresh(
+      0.72,
+      0.04
+    )
+
+    .pixelate(
+      4,
+      35
+    )
+
+    .scrollY(
+      () =>
+        Math.sin(time * 0.7) * 0.08
+    )
+
+    .out(o2);
+
+
+
+  /* =========================================================
+     MAIN FOOTAGE
+  ========================================================= */
+
+  src(s0)
+
+    .scale(
+      1.01
+    )
+
+    .saturate(
+      1.15
+    )
+
+    .contrast(
+      1.08
+    )
+
+
+    /* ---------------------------------------------------------
+       BODY MOTION DISTORTION
+    --------------------------------------------------------- */
+
+    .modulate(
+
+      src(o1),
+
+      () => {
+
+        if (!cameraActive) {
+          return 0;
+        }
+
+        return (
+          0.015 +
+          motionLevel * 0.35 +
+          motionPeak * 0.30
+        );
+
+      }
+
+    )
+
+
+    /* ---------------------------------------------------------
+       HORIZONTAL DIGITAL TEARING
+    --------------------------------------------------------- */
+
+    .blend(
+
+      src(s0)
+
+        .scrollX(
+
+          () =>
+            (
+              0.015 +
+              motionPeak * 0.12 +
+              audioPeak * 0.07
+            )
+
+        )
+
+        .mask(
+          src(o2)
+        ),
+
+      () =>
+        0.15 +
+        motionPeak * 0.45 +
+        audioPeak * 0.25
+
+    )
+
+
+    /* ---------------------------------------------------------
+       SECOND GLITCH DIRECTION
+    --------------------------------------------------------- */
+
+    .blend(
+
+      src(s0)
+
+        .scrollX(
+
+          () =>
+            -(
+              0.012 +
+              motionPeak * 0.08
+            )
+
+        )
+
+        .scrollY(
+
+          () =>
+            motionPeak * 0.015
+
+        )
+
+        .mask(
+
+          src(o2)
+
+            .invert()
+
+            .scrollY(
+              0.08
+            )
+
+        ),
+
+      () =>
+        0.10 +
+        motionPeak * 0.30
+
+    )
+
+
+    /* =========================================================
+       RED CHANNEL TEAR
+    ========================================================= */
+
+    .add(
+
+      src(s0)
+
+        .scrollX(
+
+          () =>
+            0.004 +
+            motionPeak * 0.035 +
+            audioPeak * 0.025
+
+        )
+
+        .color(
+          1,
+          0,
+          0
+        )
+
+        .mask(
+          src(o2)
+        ),
+
+      () =>
+        0.03 +
+        motionPeak * 0.16 +
+        audioPeak * 0.08
+
+    )
+
+
+    /* =========================================================
+       CYAN CHANNEL TEAR
+    ========================================================= */
+
+    .add(
+
+      src(s0)
+
+        .scrollX(
+
+          () =>
+            -0.006 -
+            motionPeak * 0.03 -
+            audioPeak * 0.02
+
+        )
+
+        .color(
+          0,
+          0.8,
+          1
+        )
+
+        .mask(
+
+          src(o2)
+            .invert()
+
+        ),
+
+      () =>
+        0.025 +
+        motionPeak * 0.13 +
+        audioPeak * 0.07
+
+    )
+
+
+    /* =========================================================
+       WEBCAM GHOST
+
+       Webcam is visible as fragmented body,
+       not as another full video.
+    ========================================================= */
+
+    .blend(
+
+      src(s1)
+
+        .scale(
+          -1,
+          1
+        )
+
+        .contrast(
+          1.45
+        )
+
+        .saturate(
+          0.45
+        )
+
+        .posterize(
+          6,
+          0.75
+        )
+
+        .mask(
+          src(o1)
+        )
+
+        .scrollX(
+
+          () =>
+            Math.sin(time * 1.4) *
+            motionPeak *
+            0.04
+
+        ),
+
+      () => {
+
+        if (!cameraActive) {
+          return 0;
+        }
+
+        return (
+          0.08 +
+          motionLevel * 0.30
+        );
+
+      }
+
+    )
+
+
+    /* =========================================================
+       TEMPORAL / DATAMOSH-LIKE FEEDBACK
+    ========================================================= */
+
+    .blend(
+
+      src(o0)
+
+        .scale(
+
+          () =>
+            1.001 +
+            motionLevel * 0.012
+
+        )
+
+        .scrollX(
+
+          () =>
+            Math.sin(
+              time * 0.6
+            ) *
+            motionLevel *
+            0.025
+
+        )
+
+        .pixelate(
+
+          () =>
+            700 -
+            motionPeak * 450,
+
+          () =>
+            450 -
+            motionPeak * 300
+
+        ),
+
+      () =>
+        0.06 +
+        motionLevel * 0.20 +
+        audioPeak * 0.08
+
+    )
+
+
+    /* =========================================================
+       SOUND = MORE DIGITAL BREAKAGE
+    ========================================================= */
+
+    .pixelate(
+
+      () =>
+        900 -
+        audioPeak * 650,
+
+      () =>
+        600 -
+        audioPeak * 420
+
+    )
+
+    .saturate(
+
+      () =>
+        1.15 +
+        audioPeak * 1.2
+
+    )
+
+    .contrast(
+
+      () =>
+        1.05 +
+        audioPeak * 0.20
+
+    )
+
+    .out(o0);
+
+
+
+  /* =========================================================
+     MOUSE GLITCH AREA
+
+     Small local digital tear.
+  ========================================================= */
+
+  shape(
+    4,
+    () =>
+      0.015 +
+      mouseEnergy * 0.045,
+    0.01
+  )
+
+    .scale(
+      2.4,
+      0.45
+    )
+
+    .scrollX(
+      () =>
+        mouseX - 0.5
+    )
+
+    .scrollY(
+      () =>
+        0.5 - mouseY
+    )
+
+    .out(o3);
+
+
+
+  /* =========================================================
+     FINAL OUTPUT
+  ========================================================= */
+
+  src(o0)
+
+    .blend(
+
+      src(o0)
+
+        .scrollX(
+
+          () =>
+            mouseEnergy * 0.08
+
+        )
+
+        .pixelate(
+          120,
+          90
+        )
+
+        .mask(
+          src(o3)
+        ),
+
+      () =>
+        mouseEnergy * 0.60
+
+    )
+
+    .out(o3);
+
+
+  render(o3);
+
+}
+</script>
 
 
       /* =====================================================
