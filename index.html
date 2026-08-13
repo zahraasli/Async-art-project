@@ -24,6 +24,9 @@
       height: 100%;
       overflow: hidden;
       background: black;
+    }
+
+    body {
       cursor: crosshair;
     }
 
@@ -33,53 +36,87 @@
       width: 100%;
       height: 100%;
       display: block;
+      background: black;
     }
 
+    /*
+      Hidden media sources.
+      They still feed Hydra but are not shown directly.
+    */
     #footage,
-    #webcam {
+    #webcam,
+    #motionCanvas,
+    #analysisCanvas {
       position: fixed;
-      top: 0;
-      left: 0;
-      width: 2px;
-      height: 2px;
-      opacity: 0.001;
+      left: -10000px;
+      top: -10000px;
+      width: 160px;
+      height: 90px;
+      opacity: 0;
       pointer-events: none;
     }
 
     #startButton {
       position: fixed;
-      top: 16px;
-      left: 16px;
-      z-index: 100;
+      top: 18px;
+      left: 18px;
+      z-index: 1000;
 
-      padding: 9px 14px;
+      padding: 10px 15px;
 
-      border: 1px solid rgba(255,255,255,0.75);
-      background: rgba(0,0,0,0.42);
+      border: 1px solid rgba(255,255,255,0.65);
+      background: rgba(0,0,0,0.45);
       color: white;
 
       font-family: Arial, Helvetica, sans-serif;
       font-size: 10px;
-      letter-spacing: 1.5px;
+      letter-spacing: 1.6px;
 
       cursor: pointer;
+
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+
+      transition:
+        opacity 0.25s ease,
+        background 0.25s ease;
+    }
+
+    #startButton:hover {
+      background: rgba(255,255,255,0.10);
     }
 
     #startButton.active {
       opacity: 0.18;
     }
 
-    #startButton:hover {
+    #startButton.active:hover {
       opacity: 1;
+    }
+
+    #status {
+      position: fixed;
+      left: 18px;
+      bottom: 16px;
+      z-index: 100;
+
+      color: rgba(255,255,255,0.45);
+
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 9px;
+      letter-spacing: 1.4px;
+
+      pointer-events: none;
+      user-select: none;
     }
   </style>
 </head>
 
+
 <body>
 
   <!-- =========================================================
-       YOUR FOOTAGE
-       This exact file exists in your GitHub repository
+       YOUR VIDEO FOOTAGE
   ========================================================== -->
 
   <video
@@ -110,23 +147,44 @@
 
 
   <!-- =========================================================
-       BUTTON
+       MOTION ANALYSIS CANVASES
+  ========================================================== -->
+
+  <canvas
+    id="analysisCanvas"
+    width="160"
+    height="90"
+  ></canvas>
+
+  <canvas
+    id="motionCanvas"
+    width="160"
+    height="90"
+  ></canvas>
+
+
+  <!-- =========================================================
+       CONTROLS
   ========================================================== -->
 
   <button id="startButton">
     ENABLE CAMERA + SOUND
   </button>
 
+  <div id="status">
+    FOOTAGE MODE
+  </div>
+
 
   <!-- =========================================================
-       HYDRA CANVAS
+       HYDRA OUTPUT
   ========================================================== -->
 
   <canvas id="hydraCanvas"></canvas>
 
 
   <!-- =========================================================
-       HYDRA
+       HYDRA LIBRARY
   ========================================================== -->
 
   <script src="https://unpkg.com/hydra-synth"></script>
@@ -147,82 +205,123 @@
     const webcam =
       document.getElementById("webcam");
 
+    const analysisCanvas =
+      document.getElementById("analysisCanvas");
+
+    const motionCanvas =
+      document.getElementById("motionCanvas");
+
+    const analysisContext =
+      analysisCanvas.getContext(
+        "2d",
+        {
+          willReadFrequently: true
+        }
+      );
+
+    const motionContext =
+      motionCanvas.getContext(
+        "2d",
+        {
+          willReadFrequently: true
+        }
+      );
+
     const startButton =
       document.getElementById("startButton");
 
+    const statusText =
+      document.getElementById("status");
+
 
     /* =========================================================
-       INTERACTION VARIABLES
+       GLOBAL STATE
     ========================================================= */
+
+    let cameraActive = false;
+    let hydraStarted = false;
 
     let audioLevel = 0;
     let audioPeak = 0;
 
+    let motionLevel = 0;
+    let motionPeak = 0;
+
     let mouseX = 0.5;
     let mouseY = 0.5;
 
+    let previousMouseX = 0.5;
+    let previousMouseY = 0.5;
+
     let mouseEnergy = 0;
 
-    let lastMouseX = 0.5;
-    let lastMouseY = 0.5;
-
-
-    /* =========================================================
-       AUDIO
-    ========================================================= */
+    let previousFrame = null;
 
     let analyser = null;
     let audioData = null;
 
 
     /* =========================================================
-       STATE
+       PARAMETERS
     ========================================================= */
 
-    let cameraActive = false;
-    let hydraStarted = false;
+    /*
+      Higher = microphone reacts more strongly.
+    */
+    const AUDIO_SENSITIVITY = 16;
+
+
+    /*
+      Motion difference amplification.
+      Increase if body movement feels too weak.
+    */
+    const MOTION_GAIN = 7.5;
+
+
+    /*
+      Webcam itself stays subtle.
+
+      Webcam is primarily used to disturb the footage,
+      not to cover it.
+    */
+    const WEBCAM_VISIBILITY = 0.12;
+
+
+    /*
+      How strongly body movement distorts the footage.
+    */
+    const BODY_DISTORTION = 0.22;
+
+
+    /*
+      Feedback is intentionally moderate.
+      This keeps the original footage visible.
+    */
+    const FEEDBACK_BASE = 0.11;
+
+
+    /*
+      Mouse effect remains local.
+    */
+    const MOUSE_DISTORTION = 0.20;
 
 
     /* =========================================================
-       VISUAL SETTINGS
+       HYDRA
     ========================================================= */
 
-    const AUDIO_SENSITIVITY = 20;
+    const hydra =
+      new Hydra({
 
-    /*
-      Webcam visibility is intentionally very low.
-    */
+        canvas: canvas,
 
-    const CAMERA_PRESENCE = 0.07;
+        detectAudio: false,
 
-    /*
-      But camera movement strongly distorts footage.
-    */
+        enableStreamCapture: false,
 
-    const CAMERA_WARP = 0.34;
+        makeGlobal: true
 
-    const FEEDBACK_AMOUNT = 0.70;
-
-    const COLOR_AMOUNT = 0.018;
-
-    const MOUSE_EFFECT = 0.05;
-
-
-    /* =========================================================
-       HYDRA ENGINE
-    ========================================================= */
-
-    const hydra = new Hydra({
-
-      canvas: canvas,
-
-      detectAudio: false,
-
-      enableStreamCapture: false,
-
-      makeGlobal: true
-
-    });
+      });
 
 
     /* =========================================================
@@ -231,20 +330,32 @@
 
     function resizeHydra() {
 
-      canvas.width =
-        window.innerWidth;
+      const pixelRatio =
+        Math.min(
+          window.devicePixelRatio || 1,
+          1.5
+        );
 
-      canvas.height =
-        window.innerHeight;
+      const width =
+        Math.floor(
+          window.innerWidth *
+          pixelRatio
+        );
 
+      const height =
+        Math.floor(
+          window.innerHeight *
+          pixelRatio
+        );
 
       if (
-        typeof setResolution === "function"
+        typeof setResolution ===
+        "function"
       ) {
 
         setResolution(
-          window.innerWidth,
-          window.innerHeight
+          width,
+          height
         );
 
       }
@@ -262,7 +373,7 @@
 
 
     /* =========================================================
-       LOAD FOOTAGE
+       FOOTAGE
     ========================================================= */
 
     async function initializeFootage() {
@@ -279,7 +390,7 @@
       catch(error) {
 
         console.log(
-          "Autoplay waiting for interaction:",
+          "Waiting for user interaction before video playback.",
           error
         );
 
@@ -287,7 +398,7 @@
 
 
       /*
-        s0 = YOUR VIDEO
+        s0 = prerecorded footage
       */
 
       s0.init({
@@ -296,7 +407,8 @@
 
 
       /*
-        Temporary source before webcam activation.
+        Before webcam permission,
+        s1 temporarily receives the footage.
       */
 
       s1.init({
@@ -304,9 +416,18 @@
       });
 
 
+      /*
+        s2 = live motion map canvas
+      */
+
+      s2.init({
+        src: motionCanvas
+      });
+
+
       if (!hydraStarted) {
 
-        startHydraPatch();
+        createHydraPatch();
 
         hydraStarted = true;
 
@@ -318,20 +439,20 @@
     footage.addEventListener(
       "loadeddata",
       initializeFootage,
-      { once: true }
+      {
+        once: true
+      }
     );
 
 
-    if (footage.readyState >= 2) {
+    if (
+      footage.readyState >= 2
+    ) {
 
       initializeFootage();
 
     }
 
-
-    /* =========================================================
-       FOOTAGE ERROR
-    ========================================================= */
 
     footage.addEventListener(
       "error",
@@ -344,12 +465,15 @@
         startButton.textContent =
           "FOOTAGE NOT FOUND";
 
+        statusText.textContent =
+          "CHECK DSC_3062.mp4";
+
       }
     );
 
 
     /* =========================================================
-       MOUSE
+       MOUSE TRACKING
     ========================================================= */
 
     window.addEventListener(
@@ -360,7 +484,6 @@
           event.clientX /
           window.innerWidth;
 
-
         const y =
           event.clientY /
           window.innerHeight;
@@ -368,29 +491,37 @@
 
         const dx =
           x -
-          lastMouseX;
-
+          previousMouseX;
 
         const dy =
           y -
-          lastMouseY;
+          previousMouseY;
 
+
+        const velocity =
+          Math.hypot(
+            dx,
+            dy
+          );
+
+
+        /*
+          Fast mouse movement creates energy.
+        */
 
         mouseEnergy =
           Math.min(
             1,
-            Math.hypot(
-              dx,
-              dy
-            ) * 20
+            mouseEnergy +
+            velocity * 7
           );
 
 
         mouseX = x;
         mouseY = y;
 
-        lastMouseX = x;
-        lastMouseY = y;
+        previousMouseX = x;
+        previousMouseY = y;
 
       }
     );
@@ -405,7 +536,9 @@
       async () => {
 
         if (cameraActive) {
+
           return;
+
         }
 
 
@@ -428,24 +561,35 @@
         try {
 
           const stream =
-            await navigator.mediaDevices.getUserMedia({
+            await navigator.mediaDevices
+              .getUserMedia({
 
-              video: {
-                facingMode: "user"
-              },
+                video: {
 
-              audio: {
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: true
-              }
+                  facingMode: "user",
 
-            });
+                  width: {
+                    ideal: 1280
+                  },
 
+                  height: {
+                    ideal: 720
+                  }
 
-          /* =====================================================
-             WEBCAM SOURCE
-          ===================================================== */
+                },
+
+                audio: {
+
+                  echoCancellation: false,
+
+                  noiseSuppression: false,
+
+                  autoGainControl: true
+
+                }
+
+              });
+
 
           webcam.srcObject =
             stream;
@@ -453,6 +597,10 @@
 
           await webcam.play();
 
+
+          /*
+            s1 = live webcam
+          */
 
           s1.init({
             src: webcam
@@ -462,9 +610,9 @@
           cameraActive = true;
 
 
-          /* =====================================================
-             AUDIO ANALYSER
-          ===================================================== */
+          /*
+            AUDIO
+          */
 
           try {
 
@@ -481,13 +629,15 @@
 
 
             const microphone =
-              audioContext.createMediaStreamSource(
-                stream
-              );
+              audioContext
+                .createMediaStreamSource(
+                  stream
+                );
 
 
             analyser =
-              audioContext.createAnalyser();
+              audioContext
+                .createAnalyser();
 
 
             analyser.fftSize =
@@ -495,7 +645,7 @@
 
 
             analyser.smoothingTimeConstant =
-              0.10;
+              0.18;
 
 
             microphone.connect(
@@ -528,6 +678,20 @@
             "active"
           );
 
+
+          statusText.textContent =
+            "BODY / SOUND / MOUSE ACTIVE";
+
+
+          /*
+            Start motion detection only
+            after webcam permission.
+          */
+
+          requestAnimationFrame(
+            updateMotion
+          );
+
         }
 
         catch(error) {
@@ -540,6 +704,10 @@
 
           startButton.textContent =
             "CAMERA / SOUND FAILED";
+
+
+          statusText.textContent =
+            "PERMISSION REQUIRED";
 
         }
 
@@ -554,85 +722,80 @@
     function updateAudio() {
 
       if (
-        !analyser ||
-        !audioData
-      ) {
-
-        audioLevel *= 0.86;
-        audioPeak *= 0.80;
-        mouseEnergy *= 0.88;
-
-
-        requestAnimationFrame(
-          updateAudio
-        );
-
-
-        return;
-
-      }
-
-
-      analyser.getByteTimeDomainData(
+        analyser &&
         audioData
-      );
-
-
-      let sum = 0;
-
-
-      for (
-        let i = 0;
-        i < audioData.length;
-        i++
       ) {
 
-        const value =
-          (
-            audioData[i] -
-            128
-          ) / 128;
+        analyser.getByteTimeDomainData(
+          audioData
+        );
 
 
-        sum +=
-          value *
-          value;
+        let sum = 0;
+
+
+        for (
+          let i = 0;
+          i < audioData.length;
+          i++
+        ) {
+
+          const sample =
+            (
+              audioData[i] -
+              128
+            ) / 128;
+
+
+          sum +=
+            sample *
+            sample;
+
+        }
+
+
+        const rms =
+          Math.sqrt(
+            sum /
+            audioData.length
+          );
+
+
+        const target =
+          Math.min(
+            1,
+            rms *
+            AUDIO_SENSITIVITY
+          );
+
+
+        /*
+          Responsive attack,
+          slower release.
+        */
+
+        audioLevel =
+          audioLevel * 0.68 +
+          target * 0.32;
+
+
+        audioPeak =
+          Math.max(
+            target,
+            audioPeak * 0.86
+          );
+
+      }
+
+      else {
+
+        audioLevel *= 0.94;
+        audioPeak *= 0.90;
 
       }
 
 
-      const rms =
-        Math.sqrt(
-          sum /
-          audioData.length
-        );
-
-
-      const target =
-        Math.min(
-          1,
-          rms *
-          AUDIO_SENSITIVITY
-        );
-
-
-      audioLevel =
-        audioLevel *
-        0.24 +
-        target *
-        0.76;
-
-
-      audioPeak =
-        Math.max(
-          target,
-          audioPeak *
-          0.74
-        );
-
-
-      mouseEnergy *=
-        0.88;
+      mouseEnergy *= 0.91;
 
 
       requestAnimationFrame(
@@ -646,194 +809,471 @@
 
 
     /* =========================================================
+       MOTION DETECTION
+
+       This is important.
+
+       Instead of simply displaying the webcam,
+       we compare consecutive webcam frames.
+
+       Bright pixels in motionCanvas mean:
+       "something moved here."
+
+       Hydra then uses that image as a displacement map.
+    ========================================================= */
+
+    function updateMotion() {
+
+      if (
+        !cameraActive ||
+        webcam.readyState < 2
+      ) {
+
+        requestAnimationFrame(
+          updateMotion
+        );
+
+        return;
+
+      }
+
+
+      const width =
+        analysisCanvas.width;
+
+      const height =
+        analysisCanvas.height;
+
+
+      /*
+        Mirror webcam.
+
+        This makes interaction feel natural:
+        move right -> effect moves right.
+      */
+
+      analysisContext.save();
+
+      analysisContext.clearRect(
+        0,
+        0,
+        width,
+        height
+      );
+
+      analysisContext.translate(
+        width,
+        0
+      );
+
+      analysisContext.scale(
+        -1,
+        1
+      );
+
+      analysisContext.drawImage(
+        webcam,
+        0,
+        0,
+        width,
+        height
+      );
+
+      analysisContext.restore();
+
+
+      let currentFrame;
+
+
+      try {
+
+        currentFrame =
+          analysisContext.getImageData(
+            0,
+            0,
+            width,
+            height
+          );
+
+      }
+
+      catch(error) {
+
+        requestAnimationFrame(
+          updateMotion
+        );
+
+        return;
+
+      }
+
+
+      if (!previousFrame) {
+
+        previousFrame =
+          new Uint8ClampedArray(
+            currentFrame.data
+          );
+
+
+        requestAnimationFrame(
+          updateMotion
+        );
+
+        return;
+
+      }
+
+
+      const output =
+        motionContext.createImageData(
+          width,
+          height
+        );
+
+
+      let totalMotion = 0;
+
+
+      for (
+        let i = 0;
+        i < currentFrame.data.length;
+        i += 4
+      ) {
+
+        const r1 =
+          currentFrame.data[i];
+
+        const g1 =
+          currentFrame.data[i + 1];
+
+        const b1 =
+          currentFrame.data[i + 2];
+
+
+        const r0 =
+          previousFrame[i];
+
+        const g0 =
+          previousFrame[i + 1];
+
+        const b0 =
+          previousFrame[i + 2];
+
+
+        const currentBrightness =
+          (
+            r1 +
+            g1 +
+            b1
+          ) / 3;
+
+
+        const previousBrightness =
+          (
+            r0 +
+            g0 +
+            b0
+          ) / 3;
+
+
+        /*
+          Difference between frames.
+        */
+
+        let difference =
+          Math.abs(
+            currentBrightness -
+            previousBrightness
+          );
+
+
+        /*
+          Ignore tiny camera noise.
+        */
+
+        difference =
+          Math.max(
+            0,
+            difference - 8
+          );
+
+
+        /*
+          Amplify real movement.
+        */
+
+        difference =
+          Math.min(
+            255,
+            difference *
+            MOTION_GAIN
+          );
+
+
+        /*
+          Nonlinear response.
+
+          Strong movement becomes dramatically brighter.
+        */
+
+        const normalized =
+          difference / 255;
+
+
+        const shaped =
+          Math.pow(
+            normalized,
+            0.72
+          );
+
+
+        const value =
+          Math.floor(
+            shaped *
+            255
+          );
+
+
+        output.data[i] =
+          value;
+
+        output.data[i + 1] =
+          value;
+
+        output.data[i + 2] =
+          value;
+
+        output.data[i + 3] =
+          255;
+
+
+        totalMotion +=
+          value;
+
+      }
+
+
+      motionContext.putImageData(
+        output,
+        0,
+        0
+      );
+
+
+      /*
+        Calculate overall amount of motion.
+      */
+
+      const pixels =
+        width *
+        height;
+
+
+      const measuredMotion =
+        Math.min(
+          1,
+          (
+            totalMotion /
+            pixels /
+            255
+          ) * 6
+        );
+
+
+      motionLevel =
+        motionLevel * 0.70 +
+        measuredMotion * 0.30;
+
+
+      motionPeak =
+        Math.max(
+          measuredMotion,
+          motionPeak * 0.87
+        );
+
+
+      previousFrame.set(
+        currentFrame.data
+      );
+
+
+      requestAnimationFrame(
+        updateMotion
+      );
+
+    }
+
+
+    /* =========================================================
        HYDRA PATCH
     ========================================================= */
 
-    function startHydraPatch() {
+    function createHydraPatch() {
 
 
       /* =====================================================
-         CAMERA DISTORTION SOURCE
+         1. MOTION TEXTURE
 
-         Camera is processed heavily before it affects footage.
+         Webcam movement becomes an unstable,
+         organic displacement texture.
+
+         o1 contains this texture.
       ===================================================== */
 
-      src(s1)
+      src(s2)
 
-        .scale(
-          () =>
-            1.03 +
-            audioLevel * 0.04
+        .contrast(
+          3.6
         )
 
+        .posterize(
+          7,
+          0.72
+        )
 
         .modulate(
 
           noise(
-            1.9,
-            0.05
+            3.4,
+            0.08
           )
 
             .rotate(
               () =>
-                time * 0.03
-            )
-
-            .scale(
-              1.6
+                time * 0.035
             ),
 
           () =>
-            0.08 +
-            audioLevel * 0.20
-        )
+            0.03 +
+            motionLevel * 0.20
 
+        )
 
         .modulate(
 
           noise(
-            5.0,
-            0.10
+            9,
+            0.16
           ),
 
           () =>
-            0.035 +
-            audioPeak * 0.13
+            motionPeak * 0.10 +
+            audioPeak * 0.05
+
         )
 
-
-        .modulateHue(
-
-          noise(
-            2.1,
-            0.04
-          )
-
-            .colorama(
-              0.55
-            ),
+        .scale(
 
           () =>
-            0.8 +
-            audioLevel * 2.6
+            1.02 +
+            motionLevel * 0.06
+
         )
-
-
-        .posterize(
-          12,
-          0.7
-        )
-
-
-        .saturate(
-
-          () =>
-            3.0 +
-            audioLevel * 4.0
-        )
-
-
-        .contrast(
-          1.3
-        )
-
-
-        /* ===================================================
-           CAMERA FEEDBACK
-        =================================================== */
-
-        .blend(
-
-          src(o1)
-
-            .scale(
-
-              () =>
-                1.008 +
-                audioLevel * 0.015
-            )
-
-            .rotate(
-
-              () =>
-                Math.sin(
-                  time * 0.12
-                ) *
-                0.008
-            )
-
-            .modulate(
-
-              noise(
-                1.8,
-                0.025
-              ),
-
-              () =>
-                0.018 +
-                audioPeak * 0.07
-            ),
-
-          () =>
-            0.45 +
-            audioLevel * 0.12
-        )
-
 
         .out(o1);
 
 
 
       /* =====================================================
-         YOUR VIDEO IS THE BASE
+         2. PRIMARY IMAGE
+
+         DSC_3062.mp4 remains recognizable.
       ===================================================== */
 
       src(s0)
 
-
         .saturate(
-          1.7
+
+          () =>
+            1.10 +
+            audioLevel * 0.50
+
         )
 
-
         .contrast(
-          1.08
+
+          () =>
+            1.03 +
+            audioPeak * 0.10
+
         )
 
 
         /* ===================================================
-           CAMERA MOVEMENT DISTORTS VIDEO
+           ORGANIC BASE DRIFT
+
+           Very subtle.
+           Prevents the image from feeling static.
+        =================================================== */
+
+        .modulate(
+
+          noise(
+            2.1,
+            0.025
+          )
+
+            .rotate(
+              () =>
+                Math.sin(
+                  time * 0.07
+                ) * 0.08
+            ),
+
+          () =>
+            0.003 +
+            audioLevel * 0.012
+
+        )
+
+
+        /* ===================================================
+           BODY MOVEMENT -> FOOTAGE DEFORMATION
+
+           This is the central interaction.
         =================================================== */
 
         .modulate(
 
           src(o1)
 
-            .saturate(
-              0
+            .scale(
+              1.04
             )
 
-            .contrast(
-              2.5
-            )
+            .scrollX(
 
-            .posterize(
-              8,
-              0.65
+              () =>
+                Math.sin(
+                  time * 0.13
+                ) * 0.01
+
             ),
 
           () => {
 
-            if (cameraActive) {
+            if (!cameraActive) {
 
-              return (
-                CAMERA_WARP +
-                audioLevel * 0.25
-              );
+              return 0;
 
             }
 
-            return 0.015;
+
+            return (
+
+              0.012 +
+
+              motionLevel *
+              BODY_DISTORTION +
+
+              motionPeak *
+              0.17 +
+
+              audioLevel *
+              0.035
+
+            );
 
           }
 
@@ -841,70 +1281,102 @@
 
 
         /* ===================================================
-           IRREGULAR GLITCH
+           SECOND BODY DISPLACEMENT
+
+           Different spatial frequency.
+           Prevents rectangular / uniform glitch.
         =================================================== */
 
         .modulate(
 
-          noise(
-
-            3.2,
-
-            () =>
-              0.02 +
-              audioLevel * 0.06
-          )
+          src(o1)
 
             .rotate(
+
               () =>
-                time * 0.018
+                Math.sin(
+                  time * 0.19
+                ) *
+                0.035
+
             )
 
             .scale(
-              1.5
+              1.25
             ),
 
           () =>
-            0.025 +
-            audioLevel * 0.10
+            cameraActive
+              ?
+              motionPeak * 0.085
+              :
+              0
+
         )
 
 
         /* ===================================================
-           VERY FAINT WEBCAM GHOST
+           WEBCAM GHOST
+
+           Webcam is visible only faintly.
+
+           It creates a sense of the body entering
+           the pre-recorded footage rather than
+           simply appearing on top of it.
         =================================================== */
 
         .blend(
 
-          src(o1)
+          src(s1)
+
+            .scale(
+              -1,
+              1
+            )
 
             .saturate(
-              2
+              0.75
             )
 
             .contrast(
-              1.4
+              1.25
+            )
+
+            .modulate(
+
+              src(o1),
+
+              () =>
+                0.015 +
+                motionPeak * 0.08
+
             )
 
             .colorama(
 
               () =>
-                0.012 +
-                audioLevel * 0.025
+                0.001 +
+                audioLevel * 0.008
+
             ),
 
           () => {
 
-            if (cameraActive) {
+            if (!cameraActive) {
 
-              return (
-                CAMERA_PRESENCE +
-                audioLevel * 0.025
-              );
+              return 0;
 
             }
 
-            return 0;
+
+            return (
+
+              WEBCAM_VISIBILITY +
+
+              motionLevel *
+              0.08
+
+            );
 
           }
 
@@ -913,6 +1385,11 @@
 
         /* ===================================================
            TEMPORAL FEEDBACK
+
+           Moderate feedback.
+
+           Only becomes aggressive when
+           movement or sound increases.
         =================================================== */
 
         .blend(
@@ -922,192 +1399,284 @@
             .scale(
 
               () =>
-                1.003 +
-                audioLevel * 0.012
+                1.0015 +
+                motionLevel * 0.008 +
+                audioLevel * 0.005
+
             )
 
             .rotate(
 
               () =>
                 Math.sin(
-                  time * 0.08
+                  time * 0.11
                 ) *
-                0.004
+                (
+                  0.001 +
+                  motionLevel * 0.006
+                )
+
             )
 
             .modulate(
 
               noise(
-                1.4,
-                0.02
+                2.3,
+                0.035
               ),
 
               () =>
-                0.012 +
-                audioLevel * 0.07
-            )
+                motionLevel * 0.035 +
+                audioLevel * 0.018
 
-            .colorama(
-
-              () =>
-                COLOR_AMOUNT +
-                audioLevel * 0.035
             ),
 
           () =>
-            FEEDBACK_AMOUNT +
-            audioLevel * 0.08
+            FEEDBACK_BASE +
+            motionLevel * 0.17 +
+            audioPeak * 0.06
+
         )
 
 
         /* ===================================================
-           RED GLITCH CHANNEL
+           CHROMATIC RED TEAR
+
+           Appears mostly during peaks.
         =================================================== */
 
         .add(
 
-          src(o0)
+          src(s0)
 
             .scrollX(
 
               () =>
-                0.002 +
-                audioPeak * 0.018
+                motionPeak * 0.012 +
+                audioPeak * 0.006
+
+            )
+
+            .modulate(
+
+              src(o1),
+
+              () =>
+                motionPeak * 0.04
+
             )
 
             .color(
-              1.25,
-              0.05,
-              0.12
+              1.20,
+              0.03,
+              0.05
             ),
 
           () =>
-            0.055 +
-            audioPeak * 0.13
+            motionPeak * 0.075 +
+            audioPeak * 0.025
+
         )
 
 
         /* ===================================================
-           CYAN GLITCH CHANNEL
+           CHROMATIC CYAN TEAR
         =================================================== */
 
         .add(
 
-          src(o0)
+          src(s0)
 
             .scrollX(
 
               () =>
-                -0.003 -
-                audioPeak * 0.016
+                -motionPeak * 0.010 -
+                audioPeak * 0.005
+
+            )
+
+            .modulate(
+
+              src(o1),
+
+              () =>
+                motionPeak * 0.035
+
             )
 
             .color(
-              0.04,
-              0.85,
-              1.30
+              0.02,
+              0.72,
+              1.15
             ),
 
           () =>
-            0.05 +
-            audioPeak * 0.12
+            motionPeak * 0.065 +
+            audioPeak * 0.022
+
         )
 
 
         /* ===================================================
-           COLOR
+           CONTROLLED COLOR INSTABILITY
         =================================================== */
 
         .colorama(
 
           () =>
-            0.004 +
-            audioLevel * 0.025
-        )
+            0.001 +
+            motionPeak * 0.012 +
+            audioPeak * 0.010
 
+        )
 
         .saturate(
 
           () =>
-            1.8 +
-            audioLevel * 2.8
-        )
+            1.04 +
+            motionLevel * 0.70 +
+            audioLevel * 0.60
 
+        )
 
         .contrast(
 
           () =>
-            1.05 +
-            audioPeak * 0.22
-        )
+            1.01 +
+            motionPeak * 0.12
 
+        )
 
         .out(o0);
 
 
 
       /* =====================================================
-         LOCAL MOUSE GLITCH
+         3. LOCAL MOUSE MASK
+
+         Small irregular region around cursor.
       ===================================================== */
 
-      noise(
-        7,
-        0.13
+      shape(
+
+        70,
+
+        () =>
+          0.025 +
+          mouseEnergy * 0.035,
+
+        0.18
+
       )
 
-        .mask(
+        .scrollX(
 
-          shape(
+          () =>
+            mouseX -
+            0.5
 
-            90,
+        )
 
-            () =>
-              0.04 +
-              mouseEnergy *
-              MOUSE_EFFECT,
+        .scrollY(
 
-            0.22
+          () =>
+            0.5 -
+            mouseY
+
+        )
+
+        .modulate(
+
+          noise(
+            5.5,
+            0.18
+          ),
+
+          () =>
+            0.06 +
+            mouseEnergy * 0.12
+
+        )
+
+        .mult(
+
+          noise(
+            7.5,
+            0.20
           )
 
-            .scrollX(
-
-              () =>
-                mouseX -
-                0.5
-            )
-
-            .scrollY(
-
-              () =>
-                mouseY -
-                0.5
+            .contrast(
+              2.5
             )
 
         )
-
-
-        .contrast(
-          2.5
-        )
-
 
         .out(o2);
 
 
 
       /* =====================================================
-         APPLY LOCAL MOUSE EFFECT
+         4. FINAL LOCAL GLITCH
+
+         Mouse only destabilizes the small mask region.
       ===================================================== */
 
       src(o0)
 
         .modulate(
 
-          src(o2),
+          src(o2)
+
+            .scrollX(
+
+              () =>
+                Math.sin(
+                  time * 2.2
+                ) *
+                mouseEnergy *
+                0.015
+
+            ),
 
           () =>
             mouseEnergy *
-            0.10
+            MOUSE_DISTORTION
+
+        )
+
+        .blend(
+
+          src(o0)
+
+            .scrollX(
+
+              () =>
+                (
+                  Math.sin(
+                    time * 8
+                  ) *
+                  0.012
+                ) *
+                mouseEnergy
+
+            )
+
+            .colorama(
+
+              () =>
+                mouseEnergy *
+                0.035
+
+            )
+
+            .mask(
+              src(o2)
+            ),
+
+          () =>
+            mouseEnergy *
+            0.18
+
         )
 
         .out(o3);
@@ -1124,14 +1693,16 @@
 
 
     /* =========================================================
-       SAFARI FALLBACK
+       SAFARI / AUTOPLAY FALLBACK
     ========================================================= */
 
     document.addEventListener(
       "click",
       async () => {
 
-        if (footage.paused) {
+        if (
+          footage.paused
+        ) {
 
           try {
 
@@ -1141,15 +1712,20 @@
 
           catch(error) {
 
-            console.log(error);
+            console.log(
+              error
+            );
 
           }
 
         }
 
       },
-      { once: true }
+      {
+        once: true
+      }
     );
+
 
   </script>
 
