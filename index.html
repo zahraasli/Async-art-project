@@ -281,7 +281,7 @@
 
     const BODY_GLITCH = 0.62;
 
-    const WEBCAM_AMOUNT = 0.27;
+    const WEBCAM_AMOUNT = 0.22;
 
     const FEEDBACK_AMOUNT = 0.12;
 
@@ -1333,8 +1333,8 @@
 
           .brightness(
             () =>
-              0.13 +
-              audioLevel * 0.04
+              0.065 +
+              audioLevel * 0.025
           )
 
           .saturate(
@@ -1387,7 +1387,7 @@
 
             src(s0)
 
-              .brightness(0.10)
+              .brightness(0.055)
 
               .scrollX(
                 () =>
@@ -1426,7 +1426,7 @@
 
             src(s0)
 
-              .brightness(0.10)
+              .brightness(0.055)
 
               .scrollX(
                 () =>
@@ -1464,7 +1464,7 @@
             MAGENTA / HOT RED SPLIT
           */
 
-          .add(
+          .blend(
 
             src(s0)
 
@@ -1492,10 +1492,10 @@
               ),
 
             () =>
-              0.10 +
-              motionPeak * 0.28 +
-              audioPeak * 0.16 +
-              keyFlash * 0.38
+              0.055 +
+              motionPeak * 0.24 +
+              audioPeak * 0.12 +
+              keyFlash * 0.34
 
           )
 
@@ -1504,7 +1504,7 @@
             CYAN / ELECTRIC BLUE SPLIT
           */
 
-          .add(
+          .blend(
 
             src(s0)
 
@@ -1533,10 +1533,10 @@
               ),
 
             () =>
-              0.095 +
-              motionPeak * 0.27 +
-              audioPeak * 0.15 +
-              keyFlash * 0.36
+              0.052 +
+              motionPeak * 0.23 +
+              audioPeak * 0.115 +
+              keyFlash * 0.32
 
           )
 
@@ -1545,7 +1545,7 @@
             ACID GREEN FLASHES
           */
 
-          .add(
+          .blend(
 
             src(s0)
 
@@ -1575,10 +1575,10 @@
               ),
 
             () =>
-              0.035 +
-              motionPeak * 0.12 +
-              audioPeak * 0.07 +
-              keyColor * 0.25
+              0.020 +
+              motionPeak * 0.10 +
+              audioPeak * 0.055 +
+              keyColor * 0.20
 
           )
 
@@ -1594,7 +1594,7 @@
 
             src(s1)
 
-              .brightness(0.11)
+              .brightness(0.065)
 
               .saturate(
                 () =>
@@ -1855,7 +1855,7 @@
         try {
 
           src(s0)
-            .brightness(0.13)
+            .brightness(0.065)
             .out(o0);
 
           render(o0);
