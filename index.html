@@ -272,11 +272,11 @@
 
     const MOTION_GAIN = 8;
 
-    const BODY_GLITCH = 0.42;
+    const BODY_GLITCH = 0.20;
 
-    const WEBCAM_AMOUNT = 0.18;
+    const WEBCAM_AMOUNT = 0.14;
 
-    const FEEDBACK_AMOUNT = 0.09;
+    const FEEDBACK_AMOUNT = 0.055;
 
 
     /* ======================================================
@@ -1140,6 +1140,7 @@
        HYDRA PATCH
     ======================================================= */
 
+
     function startHydraPatch() {
 
       try {
@@ -1147,26 +1148,26 @@
         /*
           ----------------------------------------------------
           o1 = WEBCAM MOTION MAP
-
-          No noise().
-          Only detected human movement.
+          Organic movement map — no square pixel pattern.
           ----------------------------------------------------
         */
 
         src(s2)
 
-          .contrast(
-            4.5
+          .contrast(3.6)
+
+          .posterize(7, 0.78)
+
+          .scale(
+            () => 1.01 + motionLevel * 0.025
           )
 
-          .posterize(
-            5,
-            0.8
+          .scrollX(
+            () => Math.sin(time * 0.37) * motionPeak * 0.012
           )
 
-          .pixelate(
-            80,
-            45
+          .scrollY(
+            () => Math.cos(time * 0.29) * motionPeak * 0.008
           )
 
           .out(o1);
@@ -1175,38 +1176,37 @@
 
         /*
           ----------------------------------------------------
-          o2 = HORIZONTAL DIGITAL BANDS
+          o2 = THIN IRREGULAR TEAR BANDS
 
-          This creates slicing / tearing,
-          rather than television static.
+          Narrow horizontal bands move at different speeds.
+          No square / checkerboard look.
           ----------------------------------------------------
         */
 
         osc(
-          5,
-          0.02,
+          9,
+          0.018,
           0
         )
 
-          .rotate(
-            Math.PI / 2
-          )
+          .rotate(Math.PI / 2)
 
           .thresh(
-            0.65,
-            0.03
-          )
-
-          .pixelate(
-            2,
-            42
+            0.76,
+            0.018
           )
 
           .scrollY(
             () =>
-              Math.sin(
-                time * 0.8
-              ) * 0.06
+              Math.sin(time * 0.83) * 0.11 +
+              Math.sin(time * 0.19) * 0.035
+          )
+
+          .modulate(
+            osc(2.3, 0.013, 0)
+              .rotate(0.09)
+              .scrollX(() => Math.sin(time * 0.31) * 0.04),
+            0.035
           )
 
           .out(o2);
@@ -1216,26 +1216,31 @@
         /*
           ----------------------------------------------------
           MAIN FOOTAGE
+
+          Footage stays readable.
+          Glitch exists, but does not dominate the image.
           ----------------------------------------------------
         */
 
         src(s0)
 
-          .scale(
-            1.005
-          )
+          .scale(1.004)
 
           .saturate(
-            1.15
+            () =>
+              1.16 +
+              audioLevel * 0.34
           )
 
           .contrast(
-            1.05
+            () =>
+              1.06 +
+              audioPeak * 0.08
           )
 
 
           /*
-            BODY MOVEMENT DEFORMS VIDEO.
+            Subtle body-driven deformation.
           */
 
           .modulate(
@@ -1245,22 +1250,13 @@
             () => {
 
               if (!cameraActive) {
-
                 return 0;
-
               }
 
-
               return (
-
-                0.01 +
-
-                motionLevel *
-                BODY_GLITCH +
-
-                motionPeak *
-                0.16
-
+                0.006 +
+                motionLevel * BODY_GLITCH +
+                motionPeak * 0.08
               );
 
             }
@@ -1269,7 +1265,7 @@
 
 
           /*
-            LARGE HORIZONTAL TEARING.
+            Mild horizontal footage tear.
           */
 
           .blend(
@@ -1277,38 +1273,24 @@
             src(s0)
 
               .scrollX(
-
                 () =>
-
-                  0.015 +
-
-                  motionPeak *
-                  0.12 +
-
-                  audioPeak *
-                  0.06
-
+                  0.006 +
+                  motionPeak * 0.045 +
+                  audioPeak * 0.020
               )
 
-              .mask(
-                src(o2)
-              ),
+              .mask(src(o2)),
 
             () =>
-
-              0.10 +
-
-              motionPeak *
-              0.35 +
-
-              audioPeak *
-              0.18
+              0.045 +
+              motionPeak * 0.16 +
+              audioPeak * 0.06
 
           )
 
 
           /*
-            TEAR IN OPPOSITE DIRECTION.
+            Opposite-direction tear.
           */
 
           .blend(
@@ -1316,192 +1298,185 @@
             src(s0)
 
               .scrollX(
-
                 () =>
-
-                  -0.012 -
-
-                  motionPeak *
-                  0.09 -
-
-                  audioPeak *
-                  0.04
-
-              )
-
-              .mask(
-
-                src(o2)
-
-                  .invert()
-
-                  .scrollY(
-                    0.09
-                  )
-
-              ),
-
-            () =>
-
-              0.07 +
-
-              motionPeak *
-              0.28
-
-          )
-
-
-          /*
-            RED CHANNEL SEPARATION.
-          */
-
-          .add(
-
-            src(s0)
-
-              .scrollX(
-
-                () =>
-
-                  0.004 +
-
-                  motionPeak *
-                  0.035 +
-
-                  audioPeak *
-                  0.025
-
-              )
-
-              .color(
-                1.0,
-                0.0,
-                0.0
-              )
-
-              .mask(
-                src(o2)
-              ),
-
-            () =>
-
-              0.015 +
-
-              motionPeak *
-              0.09 +
-
-              audioPeak *
-              0.06
-
-          )
-
-
-          /*
-            CYAN CHANNEL SEPARATION.
-          */
-
-          .add(
-
-            src(s0)
-
-              .scrollX(
-
-                () =>
-
                   -0.005 -
-
-                  motionPeak *
-                  0.03 -
-
-                  audioPeak *
-                  0.02
-
+                  motionPeak * 0.038 -
+                  audioPeak * 0.015
               )
 
-              .color(
-                0,
-                0.8,
-                1.0
+              .scrollY(
+                () =>
+                  Math.sin(time * 0.41) *
+                  motionPeak *
+                  0.008
               )
 
               .mask(
-
                 src(o2)
                   .invert()
-
+                  .scrollY(0.047)
               ),
 
             () =>
-
-              0.012 +
-
-              motionPeak *
-              0.08 +
-
-              audioPeak *
-              0.05
+              0.035 +
+              motionPeak * 0.13
 
           )
 
 
           /*
-            WEBCAM FRAGMENTS.
+            SHARP MAGENTA GLITCH
+          */
 
-            Webcam does not cover the entire footage.
-            It appears mostly where movement exists.
+          .add(
+
+            src(s0)
+
+              .scrollX(
+                () =>
+                  0.008 +
+                  motionPeak * 0.032 +
+                  audioPeak * 0.022
+              )
+
+              .color(
+                1.35,
+                0.0,
+                0.78
+              )
+
+              .contrast(1.34)
+
+              .mask(
+                src(o2)
+                  .scrollY(0.018)
+              ),
+
+            () =>
+              0.022 +
+              motionPeak * 0.10 +
+              audioPeak * 0.055
+
+          )
+
+
+          /*
+            SHARP CYAN / ELECTRIC BLUE GLITCH
+          */
+
+          .add(
+
+            src(s0)
+
+              .scrollX(
+                () =>
+                  -0.009 -
+                  motionPeak * 0.028 -
+                  audioPeak * 0.018
+              )
+
+              .color(
+                0.0,
+                1.05,
+                1.45
+              )
+
+              .contrast(1.36)
+
+              .mask(
+                src(o2)
+                  .invert()
+                  .scrollY(-0.024)
+              ),
+
+            () =>
+              0.020 +
+              motionPeak * 0.09 +
+              audioPeak * 0.05
+
+          )
+
+
+          /*
+            OCCASIONAL ACID GREEN / YELLOW ACCENT
+
+            Small amount so the palette stays sharp,
+            not rainbow-noisy.
+          */
+
+          .add(
+
+            src(s0)
+
+              .scrollX(
+                () =>
+                  Math.sin(time * 1.7) *
+                  (0.004 + audioPeak * 0.012)
+              )
+
+              .color(
+                0.28,
+                1.25,
+                0.04
+              )
+
+              .contrast(1.45)
+
+              .mask(
+                src(o2)
+                  .scrollY(0.083)
+              ),
+
+            () =>
+              0.006 +
+              audioPeak * 0.025 +
+              motionPeak * 0.025
+
+          )
+
+
+          /*
+            WEBCAM FRAGMENTS
+
+            Webcam enters as broken moving fragments,
+            not as a full rectangular overlay.
           */
 
           .blend(
 
             src(s1)
 
-              .saturate(
-                0.65
-              )
+              .saturate(1.05)
 
-              .contrast(
-                1.3
-              )
+              .contrast(1.32)
 
-              .posterize(
-                7,
-                0.75
+              .colorama(
+                () =>
+                  0.004 +
+                  audioPeak * 0.012
               )
 
               .mask(
                 src(o1)
+                  .contrast(2.2)
               )
 
               .scrollX(
-
                 () =>
-
-                  Math.sin(
-                    time * 2
-                  ) *
-
+                  Math.sin(time * 1.65) *
                   motionPeak *
-
-                  0.045
-
+                  0.028
               ),
 
             () => {
 
               if (!cameraActive) {
-
                 return 0;
-
               }
 
-
               return (
-
                 WEBCAM_AMOUNT +
-
-                motionLevel *
-                0.24
-
+                motionLevel * 0.14
               );
 
             }
@@ -1510,10 +1485,10 @@
 
 
           /*
-            LIGHT TEMPORAL FEEDBACK.
+            LIGHT TEMPORAL FEEDBACK
 
-            Kept deliberately low so the image
-            does not dissolve into static.
+            Enough for trails / datamosh feeling,
+            low enough to keep footage recognizable.
           */
 
           .blend(
@@ -1521,66 +1496,22 @@
             src(o0)
 
               .scale(
-
                 () =>
-
-                  1.001 +
-
-                  motionLevel *
-                  0.005
-
+                  1.0008 +
+                  motionLevel * 0.0025
               )
 
               .scrollX(
-
                 () =>
-
-                  Math.sin(
-                    time * 0.45
-                  ) *
-
+                  Math.sin(time * 0.46) *
                   motionLevel *
-
-                  0.025
-
+                  0.012
               ),
 
             () =>
-
               FEEDBACK_AMOUNT +
-
-              motionLevel *
-              0.10 +
-
-              audioPeak *
-              0.04
-
-          )
-
-
-          /*
-            AUDIO affects saturation and contrast.
-          */
-
-          .saturate(
-
-            () =>
-
-              1.10 +
-
-              audioLevel *
-              0.9
-
-          )
-
-          .contrast(
-
-            () =>
-
-              1.04 +
-
-              audioPeak *
-              0.16
+              motionLevel * 0.055 +
+              audioPeak * 0.025
 
           )
 
@@ -1590,37 +1521,59 @@
 
         /*
           ----------------------------------------------------
-          LOCAL MOUSE GLITCH MASK
+          o3 = IRREGULAR LOCAL MOUSE FIELD
+
+          No shape(4), no square cursor pattern.
+          A soft circular field is broken into moving slices.
           ----------------------------------------------------
         */
 
         shape(
-          4,
+          64,
           () =>
-            0.018 +
-            mouseEnergy * 0.028,
-          0.015
+            0.035 +
+            mouseEnergy * 0.035,
+          0.38
         )
 
-          .scale(
-            2.8,
-            0.38
-          )
-
           .scrollX(
-
             () =>
-              mouseX -
-              0.5
-
+              mouseX - 0.5
           )
 
           .scrollY(
-
             () =>
-              0.5 -
-              mouseY
+              0.5 - mouseY
+          )
 
+          .mult(
+
+            osc(
+              14,
+              0.028,
+              0
+            )
+
+              .rotate(Math.PI / 2)
+
+              .thresh(
+                0.57,
+                0.08
+              )
+
+              .scrollY(
+                () =>
+                  Math.sin(time * 1.13) * 0.08
+              )
+
+          )
+
+          .modulate(
+            osc(2.1, 0.017, 0)
+              .rotate(0.17),
+            () =>
+              0.025 +
+              mouseEnergy * 0.035
           )
 
           .out(o3);
@@ -1630,6 +1583,9 @@
         /*
           ----------------------------------------------------
           FINAL IMAGE
+
+          Mouse causes thin, irregular horizontal displacement
+          around the cursor rather than a square block.
           ----------------------------------------------------
         */
 
@@ -1640,22 +1596,23 @@
             src(o0)
 
               .scrollX(
-
                 () =>
-
                   mouseEnergy *
-                  0.075
-
+                  (
+                    0.018 +
+                    Math.sin(time * 3.8) * 0.015
+                  )
               )
 
-              .mask(
-                src(o3)
-              ),
+              .colorama(
+                () =>
+                  mouseEnergy * 0.014
+              )
+
+              .mask(src(o3)),
 
             () =>
-
-              mouseEnergy *
-              0.5
+              mouseEnergy * 0.24
 
           )
 
@@ -1671,11 +1628,6 @@
       }
 
       catch(error) {
-
-        /*
-          If any part of the artistic patch fails,
-          display the footage instead of a black screen.
-        */
 
         console.error(
           "Hydra patch error:",
