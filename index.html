@@ -279,11 +279,11 @@
 
     const MOTION_GAIN = 10;
 
-    const BODY_GLITCH = 0.34;
+    const BODY_GLITCH = 0.68;
 
-    const WEBCAM_AMOUNT = 0.20;
+    const WEBCAM_AMOUNT = 0.40;
 
-    const FEEDBACK_AMOUNT = 0.075;
+    const FEEDBACK_AMOUNT = 0.095;
 
 
     /* ======================================================
@@ -1275,23 +1275,24 @@
         */
 
         osc(
-          13,
-          0.021,
+          21,
+          0.028,
           0
         )
 
           .rotate(Math.PI / 2)
 
           .thresh(
-            0.71,
-            0.025
+            0.64,
+            0.035
           )
 
           .scrollY(
             () =>
-              Math.sin(time * 0.91) * 0.13 +
-              Math.sin(time * 0.23) * 0.047 +
-              keyBurst * 0.08
+              Math.sin(time * 1.37) * 0.18 +
+              Math.sin(time * 0.41) * 0.07 +
+              Math.sin(time * 0.13) * 0.035 +
+              keyBurst * 0.11
           )
 
           .modulate(
@@ -1381,10 +1382,10 @@
 
               .scrollX(
                 () =>
-                  0.004 +
-                  motionPeak * 0.052 +
-                  audioPeak * 0.020 +
-                  keyBurst * 0.16
+                  0.007 +
+                  motionPeak * 0.082 +
+                  audioPeak * 0.030 +
+                  keyBurst * 0.20
               )
 
               .scrollY(
@@ -1400,10 +1401,10 @@
               .mask(src(o2)),
 
             () =>
-              0.055 +
-              motionPeak * 0.20 +
-              audioPeak * 0.07 +
-              keyBurst * 0.34
+              0.085 +
+              motionPeak * 0.28 +
+              audioPeak * 0.10 +
+              keyBurst * 0.38
 
           )
 
@@ -1683,11 +1684,7 @@
           */
 
           .modulate(
-            osc(
-              2.6,
-              0.018,
-              0
-            )
+            osc(4.7, 0.019, 0)
               .rotate(0.32)
               .scrollY(() => Math.sin(time * 0.42) * 0.08),
             () =>
