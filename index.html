@@ -275,15 +275,15 @@
        SETTINGS
     ======================================================= */
 
-    const AUDIO_SENSITIVITY = 19;
+    const AUDIO_SENSITIVITY = 22;
 
-    const MOTION_GAIN = 10;
+    const MOTION_GAIN = 13;
 
-    const BODY_GLITCH = 0.34;
+    const BODY_GLITCH = 0.62;
 
-    const WEBCAM_AMOUNT = 0.20;
+    const WEBCAM_AMOUNT = 0.27;
 
-    const FEEDBACK_AMOUNT = 0.075;
+    const FEEDBACK_AMOUNT = 0.12;
 
 
     /* ======================================================
@@ -916,11 +916,11 @@
 
       mouseEnergy *= 0.91;
 
-      keyBurst *= 0.88;
-      keySmear *= 0.92;
-      keyFlash *= 0.84;
-      keyFold *= 0.90;
-      keyColor *= 0.86;
+      keyBurst *= 0.91;
+      keySmear *= 0.94;
+      keyFlash *= 0.88;
+      keyFold *= 0.92;
+      keyColor *= 0.90;
 
 
       requestAnimationFrame(
@@ -1208,58 +1208,69 @@
 
 
 
+
     function startHydraPatch() {
 
       try {
 
         /*
           ----------------------------------------------------
-          o1 = ORGANIC MOTION MAP
+          o1 = AGGRESSIVE ORGANIC MOTION MAP
 
-          Camera movement becomes an irregular displacement field.
-          No square geometry, no checkerboard pixel pattern.
+          Camera motion becomes a torn, unstable deformation field.
+          Still no square/checkerboard geometry.
           ----------------------------------------------------
         */
 
         src(s2)
 
-          .contrast(4.4)
+          .contrast(5.4)
 
-          .posterize(9, 0.76)
+          .posterize(11, 0.72)
 
           .scale(
             () =>
-              1.01 +
-              motionLevel * 0.03 +
-              keyFold * 0.025
+              1.015 +
+              motionLevel * 0.05 +
+              keyFold * 0.05
           )
 
           .rotate(
             () =>
-              Math.sin(time * 0.17) *
-              (0.01 + motionPeak * 0.035 + keyFold * 0.05)
+              Math.sin(time * 0.22) *
+              (
+                0.018 +
+                motionPeak * 0.07 +
+                keyFold * 0.09
+              )
           )
 
           .scrollX(
             () =>
-              Math.sin(time * 0.43) *
-              (0.008 + motionPeak * 0.025)
+              Math.sin(time * 0.56) *
+              (
+                0.014 +
+                motionPeak * 0.05
+              )
           )
 
           .scrollY(
             () =>
-              Math.cos(time * 0.31) *
-              (0.006 + motionPeak * 0.018)
+              Math.cos(time * 0.41) *
+              (
+                0.010 +
+                motionPeak * 0.035
+              )
           )
 
           .modulate(
-            osc(2.4, 0.017, 0)
-              .rotate(0.21)
-              .scrollX(() => Math.sin(time * 0.22) * 0.05),
+            osc(3.2, 0.022, 0)
+              .rotate(0.24)
+              .scrollX(() => Math.sin(time * 0.31) * 0.07),
             () =>
-              0.015 +
-              motionPeak * 0.055 +
-              keyFold * 0.08
+              0.028 +
+              motionPeak * 0.11 +
+              keyFold * 0.15
           )
 
           .out(o1);
@@ -1268,40 +1279,40 @@
 
         /*
           ----------------------------------------------------
-          o2 = IRREGULAR HORIZONTAL TEAR FIELD
+          o2 = MULTI-SCALE IRREGULAR TEARING
 
-          Thin bands with uneven spacing and drifting distortion.
+          Thin + medium horizontal tears overlap at different rates.
           ----------------------------------------------------
         */
 
         osc(
-          13,
-          0.021,
+          18,
+          0.028,
           0
         )
 
           .rotate(Math.PI / 2)
 
           .thresh(
-            0.71,
-            0.025
+            0.66,
+            0.028
           )
 
           .scrollY(
             () =>
-              Math.sin(time * 0.91) * 0.13 +
-              Math.sin(time * 0.23) * 0.047 +
-              keyBurst * 0.08
+              Math.sin(time * 1.17) * 0.18 +
+              Math.sin(time * 0.27) * 0.07 +
+              keyBurst * 0.13
           )
 
           .modulate(
-            osc(3.1, 0.014, 0)
-              .rotate(0.13)
-              .scrollX(() => Math.sin(time * 0.37) * 0.05),
+            osc(4.3, 0.019, 0)
+              .rotate(0.16)
+              .scrollX(() => Math.sin(time * 0.49) * 0.08),
             () =>
-              0.035 +
-              motionPeak * 0.035 +
-              keyBurst * 0.08
+              0.06 +
+              motionPeak * 0.08 +
+              keyBurst * 0.16
           )
 
           .out(o2);
@@ -1312,38 +1323,37 @@
           ----------------------------------------------------
           MAIN FOOTAGE
 
-          Slightly brighter than before.
-          Footage stays readable, but always has a mild glitch skin.
+          Brighter, readable, but visibly glitched at all times.
           ----------------------------------------------------
         */
 
         src(s0)
 
-          .scale(1.003)
+          .scale(1.006)
 
           .brightness(
             () =>
-              0.10 +
-              audioLevel * 0.025
+              0.13 +
+              audioLevel * 0.04
           )
 
           .saturate(
             () =>
-              1.28 +
-              audioLevel * 0.55 +
-              keyColor * 0.7
+              1.42 +
+              audioLevel * 0.80 +
+              keyColor * 1.0
           )
 
           .contrast(
             () =>
-              1.08 +
-              audioPeak * 0.10 +
-              keyFlash * 0.12
+              1.11 +
+              audioPeak * 0.16 +
+              keyFlash * 0.20
           )
 
 
           /*
-            Camera movement pulls the footage into the webcam field.
+            CAMERA MOTION STRONGLY DEFORMS FOOTAGE
           */
 
           .modulate(
@@ -1353,15 +1363,15 @@
             () => {
 
               if (!cameraActive) {
-                return 0.012;
+                return 0.025;
               }
 
               return (
-                0.018 +
+                0.035 +
                 motionLevel * BODY_GLITCH +
-                motionPeak * 0.17 +
-                audioPeak * 0.045 +
-                keyFold * 0.18
+                motionPeak * 0.31 +
+                audioPeak * 0.08 +
+                keyFold * 0.28
               );
 
             }
@@ -1370,195 +1380,205 @@
 
 
           /*
-            Always-on mild footage tearing.
+            LARGE POSITIVE TEAR
           */
 
           .blend(
 
             src(s0)
 
-              .brightness(0.08)
+              .brightness(0.10)
 
               .scrollX(
                 () =>
-                  0.004 +
-                  motionPeak * 0.052 +
-                  audioPeak * 0.020 +
-                  keyBurst * 0.16
+                  0.010 +
+                  motionPeak * 0.105 +
+                  audioPeak * 0.045 +
+                  keyBurst * 0.24
               )
 
               .scrollY(
                 () =>
-                  Math.sin(time * 0.37) *
+                  Math.sin(time * 0.51) *
                   (
-                    0.003 +
-                    motionPeak * 0.008 +
-                    keyBurst * 0.02
+                    0.006 +
+                    motionPeak * 0.018 +
+                    keyBurst * 0.035
                   )
               )
 
               .mask(src(o2)),
 
             () =>
-              0.055 +
-              motionPeak * 0.20 +
-              audioPeak * 0.07 +
-              keyBurst * 0.34
+              0.10 +
+              motionPeak * 0.36 +
+              audioPeak * 0.14 +
+              keyBurst * 0.42
 
           )
 
 
           /*
-            Opposite tear layer.
+            LARGE NEGATIVE TEAR
           */
 
           .blend(
 
             src(s0)
 
-              .brightness(0.08)
+              .brightness(0.10)
 
               .scrollX(
                 () =>
-                  -0.004 -
-                  motionPeak * 0.045 -
-                  audioPeak * 0.018 -
-                  keyBurst * 0.11
+                  -0.010 -
+                  motionPeak * 0.09 -
+                  audioPeak * 0.04 -
+                  keyBurst * 0.19
               )
 
-              .mask(
-                src(o2)
-                  .invert()
-                  .scrollY(0.039)
-              ),
-
-            () =>
-              0.045 +
-              motionPeak * 0.16 +
-              keyBurst * 0.20
-
-          )
-
-
-          /*
-            HOT MAGENTA / RED
-          */
-
-          .add(
-
-            src(s0)
-
-              .scrollX(
+              .scrollY(
                 () =>
-                  0.010 +
-                  motionPeak * 0.045 +
-                  audioPeak * 0.030 +
-                  keyFlash * 0.06
-              )
-
-              .color(
-                1.65,
-                0.0,
-                0.72
-              )
-
-              .saturate(2.2)
-
-              .contrast(1.55)
-
-              .mask(
-                src(o2)
-                  .scrollY(0.016)
-              ),
-
-            () =>
-              0.055 +
-              motionPeak * 0.16 +
-              audioPeak * 0.09 +
-              keyFlash * 0.28
-
-          )
-
-
-          /*
-            ELECTRIC CYAN / BLUE
-          */
-
-          .add(
-
-            src(s0)
-
-              .scrollX(
-                () =>
-                  -0.012 -
-                  motionPeak * 0.040 -
-                  audioPeak * 0.027 -
-                  keyFlash * 0.055
-              )
-
-              .color(
-                0.0,
-                1.35,
-                1.75
-              )
-
-              .saturate(2.15)
-
-              .contrast(1.58)
-
-              .mask(
-                src(o2)
-                  .invert()
-                  .scrollY(-0.021)
-              ),
-
-            () =>
-              0.050 +
-              motionPeak * 0.15 +
-              audioPeak * 0.085 +
-              keyFlash * 0.26
-
-          )
-
-
-          /*
-            ACID GREEN / YELLOW ACCENT
-          */
-
-          .add(
-
-            src(s0)
-
-              .scrollX(
-                () =>
-                  Math.sin(time * 1.83) *
+                  Math.cos(time * 0.38) *
                   (
-                    0.006 +
-                    motionPeak * 0.018 +
-                    keyColor * 0.035
+                    0.005 +
+                    motionPeak * 0.014
+                  )
+              )
+
+              .mask(
+                src(o2)
+                  .invert()
+                  .scrollY(0.043)
+              ),
+
+            () =>
+              0.085 +
+              motionPeak * 0.31 +
+              audioPeak * 0.10 +
+              keyBurst * 0.31
+
+          )
+
+
+          /*
+            MAGENTA / HOT RED SPLIT
+          */
+
+          .add(
+
+            src(s0)
+
+              .scrollX(
+                () =>
+                  0.018 +
+                  motionPeak * 0.075 +
+                  audioPeak * 0.045 +
+                  keyFlash * 0.10
+              )
+
+              .color(
+                1.95,
+                0.0,
+                0.92
+              )
+
+              .saturate(2.8)
+
+              .contrast(1.72)
+
+              .mask(
+                src(o2)
+                  .scrollY(0.014)
+              ),
+
+            () =>
+              0.10 +
+              motionPeak * 0.28 +
+              audioPeak * 0.16 +
+              keyFlash * 0.38
+
+          )
+
+
+          /*
+            CYAN / ELECTRIC BLUE SPLIT
+          */
+
+          .add(
+
+            src(s0)
+
+              .scrollX(
+                () =>
+                  -0.020 -
+                  motionPeak * 0.070 -
+                  audioPeak * 0.042 -
+                  keyFlash * 0.095
+              )
+
+              .color(
+                0.0,
+                1.55,
+                2.10
+              )
+
+              .saturate(2.7)
+
+              .contrast(1.75)
+
+              .mask(
+                src(o2)
+                  .invert()
+                  .scrollY(-0.026)
+              ),
+
+            () =>
+              0.095 +
+              motionPeak * 0.27 +
+              audioPeak * 0.15 +
+              keyFlash * 0.36
+
+          )
+
+
+          /*
+            ACID GREEN FLASHES
+          */
+
+          .add(
+
+            src(s0)
+
+              .scrollX(
+                () =>
+                  Math.sin(time * 2.1) *
+                  (
+                    0.010 +
+                    motionPeak * 0.032 +
+                    keyColor * 0.055
                   )
               )
 
               .color(
                 0.38,
-                1.55,
-                0.02
+                1.90,
+                0.0
               )
 
-              .saturate(2.3)
+              .saturate(2.8)
 
-              .contrast(1.62)
+              .contrast(1.76)
 
               .mask(
                 src(o2)
-                  .scrollY(0.071)
+                  .scrollY(0.078)
               ),
 
             () =>
-              0.018 +
-              motionPeak * 0.065 +
-              audioPeak * 0.040 +
-              keyColor * 0.16
+              0.035 +
+              motionPeak * 0.12 +
+              audioPeak * 0.07 +
+              keyColor * 0.25
 
           )
 
@@ -1566,52 +1586,61 @@
           /*
             WEBCAM + FOOTAGE FUSION
 
-            Camera appears through motion-generated fragments,
-            while also displacing the prerecorded footage.
+            Stronger overlap. Motion in camera visibly drags
+            both camera and prerecorded footage into each other.
           */
 
           .blend(
 
             src(s1)
 
-              .brightness(0.08)
+              .brightness(0.11)
 
               .saturate(
                 () =>
-                  1.30 +
-                  audioLevel * 0.65 +
-                  keyColor * 0.6
+                  1.55 +
+                  audioLevel * 0.9 +
+                  keyColor * 0.9
               )
 
-              .contrast(1.36)
+              .contrast(1.48)
 
               .colorama(
                 () =>
-                  0.008 +
-                  motionPeak * 0.018 +
-                  audioPeak * 0.018 +
-                  keyFlash * 0.045
+                  0.012 +
+                  motionPeak * 0.03 +
+                  audioPeak * 0.03 +
+                  keyFlash * 0.06
               )
 
               .modulate(
                 src(o1),
                 () =>
-                  0.020 +
-                  motionPeak * 0.10 +
-                  keyFold * 0.12
+                  0.035 +
+                  motionPeak * 0.18 +
+                  keyFold * 0.20
               )
 
               .mask(
                 src(o1)
-                  .contrast(2.6)
+                  .contrast(3.0)
               )
 
               .scrollX(
                 () =>
-                  Math.sin(time * 1.71) *
+                  Math.sin(time * 1.92) *
                   (
-                    motionPeak * 0.045 +
-                    keySmear * 0.05
+                    motionPeak * 0.075 +
+                    keySmear * 0.085
+                  )
+              )
+
+              .scrollY(
+                () =>
+                  Math.cos(time * 1.18) *
+                  (
+                    motionPeak * 0.025 +
+                    keySmear * 0.035
                   )
               ),
 
@@ -1623,9 +1652,9 @@
 
               return (
                 WEBCAM_AMOUNT +
-                motionLevel * 0.24 +
-                motionPeak * 0.08 +
-                keySmear * 0.14
+                motionLevel * 0.40 +
+                motionPeak * 0.18 +
+                keySmear * 0.22
               );
 
             }
@@ -1634,7 +1663,7 @@
 
 
           /*
-            TEMPORAL SMEAR / DATAMOSH FEEL
+            STRONGER DATAMOSH / TEMPORAL SMEAR
           */
 
           .blend(
@@ -1643,55 +1672,61 @@
 
               .scale(
                 () =>
-                  1.0008 +
-                  motionLevel * 0.004 +
-                  keySmear * 0.018
+                  1.0015 +
+                  motionLevel * 0.010 +
+                  keySmear * 0.030
               )
 
               .scrollX(
                 () =>
-                  Math.sin(time * 0.48) *
+                  Math.sin(time * 0.61) *
                   (
-                    motionLevel * 0.018 +
-                    keySmear * 0.08
+                    motionLevel * 0.045 +
+                    keySmear * 0.12
                   )
               )
 
               .scrollY(
                 () =>
-                  Math.cos(time * 0.33) *
-                  keySmear *
-                  0.018
+                  Math.cos(time * 0.42) *
+                  (
+                    motionLevel * 0.014 +
+                    keySmear * 0.030
+                  )
               )
 
               .colorama(
                 () =>
-                  keySmear * 0.025
+                  0.004 +
+                  motionPeak * 0.012 +
+                  keySmear * 0.045
               ),
 
             () =>
               FEEDBACK_AMOUNT +
-              motionLevel * 0.09 +
-              audioPeak * 0.035 +
-              keySmear * 0.28
+              motionLevel * 0.19 +
+              audioPeak * 0.07 +
+              keySmear * 0.38
 
           )
 
 
           /*
-            Brief key-triggered fold / wave.
+            EXTRA NON-SQUARE WAVE BREAK
           */
 
           .modulate(
             osc(
-              2.6,
-              0.018,
+              4.1,
+              0.023,
               0
             )
-              .rotate(0.32)
-              .scrollY(() => Math.sin(time * 0.42) * 0.08),
+              .rotate(0.41)
+              .scrollY(() => Math.sin(time * 0.56) * 0.11),
             () =>
-              keyFold * 0.12
+              motionPeak * 0.045 +
+              audioPeak * 0.018 +
+              keyFold * 0.19
           )
 
           .out(o0);
@@ -1702,17 +1737,16 @@
           ----------------------------------------------------
           o3 = IRREGULAR MOUSE FIELD
 
-          Circular + broken + sliced.
-          No square shape anywhere.
+          Soft circular zone broken by thin moving bands.
           ----------------------------------------------------
         */
 
         shape(
-          72,
+          96,
           () =>
-            0.028 +
-            mouseEnergy * 0.045,
-          0.42
+            0.032 +
+            mouseEnergy * 0.060,
+          0.46
         )
 
           .scrollX(
@@ -1726,28 +1760,28 @@
           )
 
           .modulate(
-            osc(2.8, 0.019, 0)
-              .rotate(0.27)
-              .scrollX(() => Math.sin(time * 0.41) * 0.045),
+            osc(3.6, 0.024, 0)
+              .rotate(0.31)
+              .scrollX(() => Math.sin(time * 0.53) * 0.06),
             () =>
-              0.028 +
-              mouseEnergy * 0.055
+              0.035 +
+              mouseEnergy * 0.085
           )
 
           .mult(
             osc(
-              17,
-              0.031,
+              23,
+              0.038,
               0
             )
               .rotate(Math.PI / 2)
               .thresh(
-                0.55,
-                0.10
+                0.50,
+                0.12
               )
               .scrollY(
                 () =>
-                  Math.sin(time * 1.21) * 0.09
+                  Math.sin(time * 1.44) * 0.12
               )
           )
 
@@ -1771,26 +1805,33 @@
                 () =>
                   mouseEnergy *
                   (
-                    0.022 +
-                    Math.sin(time * 4.2) * 0.018
+                    0.038 +
+                    Math.sin(time * 5.1) * 0.028
                   )
+              )
+
+              .scrollY(
+                () =>
+                  mouseEnergy *
+                  Math.sin(time * 2.7) *
+                  0.010
               )
 
               .colorama(
                 () =>
-                  mouseEnergy * 0.020
+                  mouseEnergy * 0.032
               )
 
               .mask(src(o3)),
 
             () =>
-              mouseEnergy * 0.30
+              mouseEnergy * 0.44
 
           )
 
           .brightness(
             () =>
-              keyFlash * 0.05
+              keyFlash * 0.07
           )
 
           .out(o3);
@@ -1811,15 +1852,13 @@
           error
         );
 
-
         try {
 
           src(s0)
-            .brightness(0.10)
+            .brightness(0.13)
             .out(o0);
 
           render(o0);
-
 
           statusText.textContent =
             "FOOTAGE FALLBACK MODE";
@@ -1832,7 +1871,6 @@
             "Hydra fallback failed:",
             fallbackError
           );
-
 
           statusText.textContent =
             "HYDRA ERROR";
