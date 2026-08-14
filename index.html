@@ -279,11 +279,11 @@
 
     const MOTION_GAIN = 10;
 
-    const BODY_GLITCH = 0.48;
+    const BODY_GLITCH = 0.78;
 
-    const WEBCAM_AMOUNT = 0.22;
+    const WEBCAM_AMOUNT = 0.30;
 
-    const FEEDBACK_AMOUNT = 0.095;
+    const FEEDBACK_AMOUNT = 0.055;
 
 
     /* ======================================================
@@ -1344,8 +1344,8 @@ osc(
   )
 
   .thresh(
-    0.58,
-    0.12
+    0.46,
+    0.28
   )
 
   .scrollX(
@@ -1374,7 +1374,25 @@ osc(
         src(s0)
 
           .scale(1.003)
+.modulate(
+  noise(
+    () => 2.2 + motionLevel * 3.5,
+    () => 0.035 + audioLevel * 0.12
+  )
+    .rotate(
+      () => Math.sin(time * 0.17) * 0.35
+    )
+    .scrollX(
+      () => Math.sin(time * 0.31) * 0.08
+    ),
 
+  () =>
+    0.025 +
+    motionLevel * 0.16 +
+    motionPeak * 0.22 +
+    audioPeak * 0.09 +
+    keyFold * 0.16
+)
           .brightness(
             () =>
               0.10 +
@@ -1411,11 +1429,11 @@ osc(
               }
 
               return (
-                0.018 +
+                0.035 +
                 motionLevel * BODY_GLITCH +
-                motionPeak * 0.26 +
-                audioPeak * 0.045 +
-                keyFold * 0.18
+                motionPeak * 0.42 +
+                audioPeak * 0.085 +
+                keyFold * 0.24
               );
 
             }
