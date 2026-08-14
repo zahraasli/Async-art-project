@@ -435,7 +435,7 @@
 
         if (!hydraStarted) {
 
-          startHydraPatch();
+          startHydraPatchV2();
 
           hydraStarted = true;
 
@@ -1941,6 +1941,277 @@ osc(
             "HYDRA ERROR";
 
         }
+
+      }
+
+    }
+
+
+    /* ======================================================
+       ULTRAVIOLET-STYLE HYDRA PATCH
+
+       Important: footage and webcam are never modulated,
+       rotated, or geometrically warped in this patch.
+       Motion reveals color layers and feedback instead.
+    ======================================================= */
+
+    function startHydraPatchV2() {
+
+      try {
+
+        /* Camera motion becomes a broken, organic reveal mask. */
+        src(s2)
+          .contrast(7.5)
+          .luma(0.16, 0.10)
+          .mult(
+            noise(3.2, 0.10)
+              .contrast(2.2)
+              .brightness(0.08)
+          )
+          .out(o1);
+
+
+        /*
+          Painted footage: strong posterized color, but no bending.
+          The three copies remain spatially aligned and fuse through
+          irregular masks rather than looking like separate videos.
+        */
+        src(s0)
+          .saturate(3.4)
+          .contrast(1.62)
+          .posterize(7, 0.72)
+          .colorama(
+            () =>
+              0.055 +
+              audioLevel * 0.055 +
+              keyColor * 0.10
+          )
+
+          .add(
+            src(s0)
+              .saturate(3.8)
+              .contrast(1.85)
+              .posterize(5, 0.68)
+              .color(1.60, 0.08, 0.82)
+              .mask(
+                noise(4.4, 0.08)
+                  .contrast(2.8)
+                  .luma(0.48, 0.16)
+              ),
+            () =>
+              0.28 +
+              audioPeak * 0.15 +
+              keyFlash * 0.25
+          )
+
+          .add(
+            src(s0)
+              .saturate(3.6)
+              .contrast(1.78)
+              .posterize(6, 0.70)
+              .color(0.02, 1.48, 1.18)
+              .mask(
+                noise(5.7, 0.065)
+                  .contrast(3.0)
+                  .luma(0.52, 0.15)
+                  .invert()
+              ),
+            () =>
+              0.22 +
+              motionLevel * 0.18 +
+              keyColor * 0.18
+          )
+
+          .add(
+            src(s0)
+              .saturate(4.0)
+              .contrast(1.90)
+              .posterize(4, 0.66)
+              .color(1.55, 0.92, 0.02)
+              .mask(
+                noise(2.6, 0.045)
+                  .contrast(3.4)
+                  .luma(0.57, 0.12)
+              ),
+            () =>
+              0.16 +
+              audioPeak * 0.10
+          )
+
+          .out(o2);
+
+
+        /*
+          Multi-layer webcam texture. It is not warped and does not sit
+          on top as a normal transparent webcam image. Each color layer
+          is posterized and revealed only by camera motion.
+        */
+        src(s1)
+          .saturate(0)
+          .contrast(1.95)
+          .posterize(6, 0.72)
+          .color(1.55, 0.06, 0.88)
+          .mask(src(o1))
+
+          .add(
+            src(s1)
+              .saturate(0)
+              .contrast(2.10)
+              .posterize(5, 0.68)
+              .color(0.02, 1.50, 1.22)
+              .mask(
+                src(o1)
+                  .invert()
+                  .mult(
+                    noise(5.2, 0.08)
+                      .contrast(2.6)
+                  )
+              ),
+            0.62
+          )
+
+          .add(
+            src(s1)
+              .saturate(0)
+              .contrast(2.18)
+              .posterize(4, 0.66)
+              .color(1.55, 1.05, 0.02)
+              .mask(
+                src(o1)
+                  .mult(
+                    noise(2.4, 0.055)
+                      .contrast(3.0)
+                  )
+              ),
+            0.42
+          )
+
+          .out(o3);
+
+
+        /*
+          Final fusion. The webcam alters the color surface of the
+          footage; it does not bend either image. Feedback gradually
+          binds the fragments into one abstract field.
+        */
+        src(o2)
+
+          .blend(
+            src(o3),
+            () => {
+              if (!cameraActive) return 0;
+
+              return (
+                0.10 +
+                motionLevel * 0.50 +
+                motionPeak * 0.22
+              );
+            }
+          )
+
+          .add(
+            src(o3)
+              .colorama(
+                () =>
+                  0.035 +
+                  audioPeak * 0.06
+              )
+              .mask(
+                noise(6.3, 0.075)
+                  .contrast(3.1)
+                  .luma(0.52, 0.14)
+              ),
+            () => {
+              if (!cameraActive) return 0;
+
+              return (
+                0.08 +
+                motionPeak * 0.32 +
+                audioPeak * 0.12
+              );
+            }
+          )
+
+          .blend(
+            src(o0)
+              .saturate(1.12)
+              .contrast(1.035)
+              .posterize(
+                () => 8 - Math.min(3, Math.floor(motionPeak * 3)),
+                0.76
+              )
+              .colorama(
+                () =>
+                  0.004 +
+                  audioLevel * 0.014 +
+                  keySmear * 0.04
+              ),
+            () =>
+              0.13 +
+              motionLevel * 0.12 +
+              audioPeak * 0.05 +
+              keySmear * 0.18
+          )
+
+          /* Mouse reveals small painted fragments, not distortion. */
+          .add(
+            src(o2)
+              .colorama(
+                () => 0.08 + mouseEnergy * 0.08
+              )
+              .mask(
+                shape(64, 0.045, 0.30)
+                  .scrollX(() => mouseX - 0.5)
+                  .scrollY(() => 0.5 - mouseY)
+                  .mult(
+                    noise(7.0, 0.10)
+                      .contrast(3.0)
+                  )
+              ),
+            () => mouseEnergy * 0.34
+          )
+
+          .saturate(
+            () =>
+              1.18 +
+              audioLevel * 0.28 +
+              keyColor * 0.35
+          )
+
+          .contrast(
+            () =>
+              1.05 +
+              audioPeak * 0.08 +
+              keyFlash * 0.10
+          )
+
+          .out(o0);
+
+
+        render(o0);
+
+        statusText.textContent =
+          "MOVE / SPEAK / PAINT WITH THE CAMERA";
+
+      }
+
+      catch(error) {
+
+        console.error(
+          "Ultraviolet Hydra patch error:",
+          error
+        );
+
+        src(s0)
+          .saturate(2.4)
+          .contrast(1.4)
+          .posterize(7, 0.75)
+          .out(o0);
+
+        render(o0);
+
+        statusText.textContent =
+          "FOOTAGE FALLBACK MODE";
 
       }
 
