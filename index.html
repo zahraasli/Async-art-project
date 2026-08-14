@@ -1639,17 +1639,14 @@ osc(
 
 
 
-              .mask(
-  src(o1)
-
+  .mask(
+     src(o1)
     .contrast(7.0)
-
     .luma(
       0.30,
       0.012
     )
-,
-
+),
             () => {
 
               if (!cameraActive) {
@@ -1712,18 +1709,7 @@ osc(
 
           )
 
-
-          /*
-            Brief key-triggered fold / wave.
-          */
-
-         .blend(
-  ...
-)
-
 .out(o0);
-
-
 
         /*
           ----------------------------------------------------
