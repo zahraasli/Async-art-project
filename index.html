@@ -1376,27 +1376,27 @@ osc(
           .scale(1.003)
           .brightness(
             () =>
-              0.10 +
-              audioLevel * 0.025
+              0.22 +
+              audioLevel * 0.10
           )
 .saturate(
   () =>
-    2.7 +
-    audioLevel * 0.8 +
-    keyColor * 0.8
+    3.4 +
+    audioLevel * 1.3 +
+    keyColor * 1.0
 )
 
 .contrast(
   () =>
-    1.38 +
-    audioPeak * 0.18 +
-    keyFlash * 0.18
+    1.22 +
+    audioPeak * 0.12 +
+    keyFlash * 0.15
 )
 
 .posterize(
   () =>
-    7 - Math.floor(audioPeak * 2),
-  0.72
+    8 - Math.floor(audioPeak * 3),
+  0.88
 )
 
 .colorama(
