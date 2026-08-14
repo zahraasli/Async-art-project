@@ -279,7 +279,7 @@
 
     const MOTION_GAIN = 10;
 
-    const BODY_GLITCH = 0.68;
+    const BODY_GLITCH = 0.48;
 
     const WEBCAM_AMOUNT = 0.22;
 
@@ -1223,11 +1223,11 @@
 
         src(s2)
 
-  .contrast(5.0)
+  .contrast(6.8)
 
   .luma(
-    0.12,
-    0.06
+    0.28,
+    0.018
   )
 
   .scale(
@@ -1270,8 +1270,8 @@
 
   .modulate(
     osc(
-      7.5,
-      0.011,
+      13.5,
+      0.019,
       0
     )
       .rotate(
@@ -1281,55 +1281,86 @@
       ),
 
     () =>
-      0.012 +
-      motionPeak * 0.045
+      0.026 +
+      motionPeak * 0.085
   )
 
   .out(o1);
 
 
         /*
-          ----------------------------------------------------
-          o2 = IRREGULAR HORIZONTAL TEAR FIELD
+  ----------------------------------------------------
+  o2 = BROKEN / RANDOM GLITCH FIELD
 
-          Thin bands with uneven spacing and drifting distortion.
-          ----------------------------------------------------
-        */
+  Creates scattered irregular fragments instead of
+  continuous horizontal bands.
+  ----------------------------------------------------
+*/
 
-        osc(
-          21,
-          0.028,
-          0
-        )
+osc(
+  8.7,
+  0.017,
+  0
+)
 
-          .rotate(Math.PI / 2)
+  .rotate(
+    () =>
+      0.37 +
+      Math.sin(time * 0.19) * 0.24
+  )
 
-          .thresh(
-            0.64,
-            0.035
-          )
+  .modulate(
+    osc(
+      3.3,
+      0.013,
+      0
+    )
+      .rotate(
+        () =>
+          -0.51 +
+          Math.sin(time * 0.11) * 0.19
+      )
+      .scrollX(
+        () =>
+          Math.sin(time * 0.31) * 0.11
+      ),
 
-          .scrollY(
-            () =>
-              Math.sin(time * 1.37) * 0.18 +
-              Math.sin(time * 0.41) * 0.07 +
-              Math.sin(time * 0.13) * 0.035 +
-              keyBurst * 0.11
-          )
+    () =>
+      0.09 +
+      motionPeak * 0.10 +
+      audioPeak * 0.035 +
+      keyBurst * 0.14
+  )
 
-          .modulate(
-            osc(3.1, 0.014, 0)
-              .rotate(0.13)
-              .scrollX(() => Math.sin(time * 0.37) * 0.05),
-            () =>
-              0.035 +
-              motionPeak * 0.035 +
-              keyBurst * 0.08
-          )
+  .modulate(
+    noise(
+      2.7,
+      0.08
+    ),
 
-          .out(o2);
+    () =>
+      0.12 +
+      motionPeak * 0.12
+  )
 
+  .thresh(
+    0.58,
+    0.12
+  )
 
+  .scrollX(
+    () =>
+      Math.sin(time * 0.73) * 0.09 +
+      Math.sin(time * 0.17) * 0.04
+  )
+
+  .scrollY(
+    () =>
+      Math.cos(time * 0.47) * 0.07 +
+      Math.sin(time * 0.21) * 0.035
+  )
+
+  .out(o2);
 
         /*
           ----------------------------------------------------
@@ -1382,7 +1413,7 @@
               return (
                 0.018 +
                 motionLevel * BODY_GLITCH +
-                motionPeak * 0.17 +
+                motionPeak * 0.26 +
                 audioPeak * 0.045 +
                 keyFold * 0.18
               );
@@ -1617,16 +1648,11 @@
   )
 
   .modulate(
-    osc(
-      5.5,
-      0.016,
-      0
-    )
+    osc(5.5, 0.016, 0)
       .rotate(
         () =>
           0.22 +
-          Math.sin(time * 0.24) * 0.18
-      ),
+          Math.sin(time * 0.24) * 0.18),
 
     () =>
       0.018 +
@@ -1641,12 +1667,31 @@
                   keyFold * 0.12
               )
 
-              .mask(
+              ..mask(
   src(o1)
-    .contrast(3.2)
+
+    .contrast(7.0)
+
     .luma(
-      0.10,
-      0.04
+      0.30,
+      0.012
+    )
+
+    .modulate(
+      osc(
+        16,
+        0.016,
+        0
+      )
+        .rotate(
+          () =>
+            0.62 +
+            Math.sin(time * 0.23) * 0.27
+        ),
+
+      () =>
+        0.025 +
+        motionPeak * 0.075
     )
 )
 
